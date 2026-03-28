@@ -1,4 +1,11 @@
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const http = require('http');
+
+// 1. KEEP-ALIVE SERVER (Prevents crashes on Render/Railway)
+http.createServer((req, res) => {
+    res.write("Mb's Ai is Alive! 😪");
+    res.end();
+}).listen(8080);
 
 const client = new Client({
     intents: [
@@ -14,10 +21,11 @@ const BRANDING = "Powered by Mb's Ai | 🤖";
 const BOT_COLOR = '#5865F2'; 
 let economy = {}; 
 
+// 2. SLASH COMMANDS
 const commands = [
-    new SlashCommandBuilder().setName('help').setDescription('View all commands'),
+    new SlashCommandBuilder().setName('help').setDescription('View commands'),
     new SlashCommandBuilder().setName('ping').setDescription('Check speed'),
-    new SlashCommandBuilder().setName('weather').setDescription('Check weather').addStringOption(o => o.setName('city').setDescription('City').setRequired(true)),
+    new SlashCommandBuilder().setName('weather').setDescription('Weather').addStringOption(o => o.setName('city').setDescription('City').setRequired(true)),
     new SlashCommandBuilder().setName('meme').setDescription('Funny meme'),
     new SlashCommandBuilder().setName('bal').setDescription('Check coins'),
     new SlashCommandBuilder().setName('daily').setDescription('Get 100 coins'),
@@ -33,27 +41,26 @@ client.once('ready', async () => {
     } catch (e) { console.error(e); }
 });
 
+// 3. COMMAND LOGIC
 async function handleCommand(name, args, user, guild, respond) {
-    try {
-        if (!economy[user.id]) economy[user.id] = 500;
-        switch (name) {
-            case 'ping': return respond(`🏓 **Pong!** \`${client.ws.ping}ms\``);
-            case 'bal': return respond(`💰 **Balance:** ${economy[user.id]} coins.`);
-            case 'daily': 
-                economy[user.id] += 100; 
-                return respond(`✅ **+100 coins!** Total: ${economy[user.id]}`);
-            case 'weather':
-                return respond(`🌡️ **Weather in ${args.join(' ') || 'Johannesburg'}:** 25°C | ☀️ Sunny`);
-            case 'meme':
-                const embed = new EmbedBuilder().setTitle("😂 Meme").setImage("https://i.imgflip.com/30zz5g.jpg").setColor(BOT_COLOR).setFooter({text: BRANDING});
-                return respond({ embeds: [embed] });
-            case 'serverstats':
-                const sEmbed = new EmbedBuilder().setTitle(`📊 ${guild.name}`).addFields({name:'Members', value:`${guild.memberCount}`}).setColor(BOT_COLOR).setFooter({text: BRANDING});
-                return respond({ embeds: [sEmbed] });
-            case '8ball': return respond(`🎱 **Answer:** Yes!`);
-            case 'help': return respond("🤖 **Commands:** `ping`, `bal`, `daily`, `weather`, `meme`, `serverstats`, `8ball` \nPrefix: `\\` or `/` ");
-        }
-    } catch (err) { console.error(err); respond("❌ An error occurred!"); }
+    if (!economy[user.id]) economy[user.id] = 500;
+    switch (name) {
+        case 'ping': return respond(`🏓 **Pong!** \`${client.ws.ping}ms\``);
+        case 'bal': return respond(`💰 **Balance:** ${economy[user.id]} coins.`);
+        case 'daily': 
+            economy[user.id] += 100; 
+            return respond(`✅ **+100 coins!** Total: ${economy[user.id]}`);
+        case 'weather':
+            return respond(`🌡️ **Weather in ${args.join(' ') || 'Johannesburg'}:** 25°C | ☀️ Sunny`);
+        case 'meme':
+            const embed = new EmbedBuilder().setTitle("😂 Meme").setImage("https://i.imgflip.com/30zz5g.jpg").setColor(BOT_COLOR).setFooter({text: BRANDING});
+            return respond({ embeds: [embed] });
+        case 'serverstats':
+            const sEmbed = new EmbedBuilder().setTitle(`📊 ${guild.name}`).addFields({name:'Members', value:`${guild.memberCount}`}).setColor(BOT_COLOR).setFooter({text: BRANDING});
+            return respond({ embeds: [sEmbed] });
+        case '8ball': return respond(`🎱 **Answer:** Yes!`);
+        case 'help': return respond("🤖 **Commands:** `ping`, `bal`, `daily`, `weather`, `meme`, `serverstats`, `8ball` \nPrefix: `\\` or `/` ");
+    }
 }
 
 client.on('messageCreate', async (m) => {
@@ -67,17 +74,8 @@ client.on('messageCreate', async (m) => {
 
 client.on('interactionCreate', async (i) => {
     if (!i.isChatInputCommand()) return;
-    await i.deferReply(); // Prevents "Interaction failed" errors
+    await i.reply({ content: "Processing...", ephemeral: true });
     await handleCommand(i.commandName, [], i.user, i.guild, (c) => i.editReply(c));
-});
-
-process.on('unhandledRejection', error => console.error('Unhandled promise rejection:', error));
-client.login(process.env.DISCORD_TOKEN);});
-
-client.on('interactionCreate', async (i) => {
-    if (!i.isChatInputCommand()) return;
-    const args = i.options.data.map(o => o.value?.toString() || "");
-    await handleCommand(i.commandName, args, i.user, i.guild, (c) => i.reply(c));
 });
 
 client.login(process.env.DISCORD_TOKEN);
