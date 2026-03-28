@@ -1,7 +1,103 @@
-{
-  "name": "Mb's Ai",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": { "start": "node index.js" },
-  "dependencies": { "discord.js": "^14.14.1" }
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
+
+const PREFIX = '\\';
+let economy = {}; // Memory-based (resets on restart)
+
+// --- SLASH COMMAND DEFINITIONS ---
+const commands = [
+    new SlashCommandBuilder().setName('help').setDescription('All commands'),
+    new SlashCommandBuilder().setName('ping').setDescription('Check speed'),
+    new SlashCommandBuilder().setName('weather').setDescription('Check weather').addStringOption(o => o.setName('city').setDescription('City name').setRequired(true)),
+    new SlashCommandBuilder().setName('serverstats').setDescription('Server info'),
+    new SlashCommandBuilder().setName('bal').setDescription('Check coins'),
+    new SlashCommandBuilder().setName('daily').setDescription('Get 100 coins'),
+    new SlashCommandBuilder().setName('slots').setDescription('Gamble').addIntegerOption(o => o.setName('amount').setDescription('Bet').setRequired(true)),
+    new SlashCommandBuilder().setName('8ball').setDescription('Magic 8-ball').addStringOption(o => o.setName('q').setDescription('Question').setRequired(true)),
+    new SlashCommandBuilder().setName('userinfo').setDescription('User stats').addUserOption(o => o.setName('target').setDescription('User')),
+].map(c => c.toJSON());
+
+client.once('ready', async () => {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log(`🚀 Superbot ${client.user.tag} is Online!`);
+});
+
+// --- HELPER FUNCTION FOR LOGIC (Shared by Prefix & Slash) ---
+async function handleCommand(name, args, user, guild, respond) {
+    if (!economy[user.id]) economy[user.id] = 500;
+
+    switch (name) {
+        case 'ping':
+            return respond(`🏓 **Pong!** Latency: ${client.ws.ping}ms`);
+        
+        case 'bal':
+            return respond(`💰 **Balance:** ${economy[user.id]} coins.`);
+
+        case 'daily':
+            economy[user.id] += 100;
+            return respond(`✅ **+100 coins!** Total: ${economy[user.id]}`);
+
+        case 'weather':
+            const city = args.join(' ') || 'London';
+            // Simple fun weather generator (Replace with API for real data)
+            const temps = ["22°C", "15°C", "30°C", "10°C", "18°C"];
+            const moods = ["☀️ Sunny", "☁️ Cloudy", "🌧️ Rainy", "⛈️ Stormy"];
+            return respond(`🌡️ **Weather in ${city}:** ${temps[Math.floor(Math.random()*5)]} | ${moods[Math.floor(Math.random()*4)]}`);
+
+        case 'serverstats':
+            const sEmbed = new EmbedBuilder()
+                .setTitle(`📊 ${guild.name} Stats`)
+                .setColor('#0099ff')
+                .addFields(
+                    { name: 'Members', value: `${guild.memberCount}`, inline: true },
+                    { name: 'Roles', value: `${guild.roles.cache.size}`, inline: true }
+                );
+            return respond({ embeds: [sEmbed] });
+
+        case '8ball':
+            const res = ["Yes", "No", "Ask later", "Maybe", "Definitely"];
+            return respond(`🎱 **Answer:** ${res[Math.floor(Math.random()*res.length)]}`);
+
+        case 'help':
+            return respond("🤖 **Superbot Commands:**\nPrefix: `\\` or `/` \n`ping`, `bal`, `daily`, `slots`, `weather`, `serverstats`, `8ball`, `userinfo` \n\n*Ping me to chat with AI!*");
+    }
 }
+
+// --- PREFIX HANDLER ---
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    // AI Chatbot on Ping
+    if (message.mentions.has(client.user)) {
+        return message.reply("I'm your Superbot! Use `\\help` or `/help` to see my powers! 😪");
+    }
+
+    if (!message.content.startsWith(PREFIX)) return;
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+    
+    await handleCommand(command, args, message.author, message.guild, (content) => message.reply(content));
+});
+
+// --- SLASH COMMAND HANDLER ---
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    const { commandName, user, guild, options } = interaction;
+    const args = options.data.map(o => o.value?.toString() || "");
+
+    await handleCommand(commandName, args, user, guild, (content) => {
+        if (typeof content === 'string') return interaction.reply(content);
+        return interaction.reply(content);
+    });
+});
+
+client.login(process.env.DISCORD_TOKEN);
