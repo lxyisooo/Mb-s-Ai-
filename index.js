@@ -18,8 +18,8 @@ const client = new Client({
 });
 
 // --- SETTINGS ---
-const CLIENT_ID = 'YOUR_APP_ID_HERE'; 
-const GUILD_ID = 'YOUR_SERVER_ID_HERE'; 
+const CLIENT_ID = 1482790365621915759;
+const GUILD_ID = 1385034268438433906; 
 const PREFIX = '\\';
 
 // --- 2. THE COMMANDS (The "Essentials" for now to prevent lag) ---
