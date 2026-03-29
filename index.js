@@ -16,11 +16,13 @@ const client = new Client({
 });
 
 // --- DATABASE (In-Memory) ---
-let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, lastMsg: {}, bday: {} };
+let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, bday: {} };
 
 // --- COMMAND DEFINITIONS ---
 const commands = [
     new SlashCommandBuilder().setName('help').setDescription('📜 View all commands'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Get server stats'),
+    new SlashCommandBuilder().setName('profile').setDescription('👤 View your profile card').addUserOption(o => o.setName('u').setDescription('User to view')),
     new SlashCommandBuilder().setName('chat').setDescription('💬 Talk to Me').addStringOption(o => o.setName('msg').setDescription('Your message').setRequired(true)),
     new SlashCommandBuilder().setName('meme').setDescription('🤣 Get a random meme'),
     new SlashCommandBuilder().setName('setbirthday').setDescription('🎂 Set your birthday (DD/MM)').addStringOption(o => o.setName('date').setDescription('e.g. 27/02').setRequired(true)),
@@ -30,7 +32,7 @@ const commands = [
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check your balance'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Earn cash'),
     new SlashCommandBuilder().setName('daily').setDescription('📆 Claim daily 1k'),
-    new SlashCommandBuilder().setName('🚀').setDescription('This').addStringOption(o => o.setName('t').setDescription('Text').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount')),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setDescription('Text').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -41,19 +43,26 @@ client.once('ready', async () => {
     } catch (e) { console.error(e); }
 });
 
-// --- MESSAGE TRACKING ---
+// --- MESSAGE TRACKING & BIRTHDAYS ---
 client.on('messageCreate', (m) => {
     if (m.author.bot) return;
     const uid = m.author.id;
     db.messages[uid] = (db.messages[uid] || 0) + 1;
     db.cash[uid] = (db.cash[uid] || 500) + 2;
+
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+    if (db.bday[uid] === today && !db.streaks[`bday_${uid}`]) {
+        m.reply(`🎂 **HAPPY BIRTHDAY!** Wimble gifted you ${CURRENCY}5000!`);
+        db.cash[uid] += 5000;
+        db.streaks[`bday_${uid}`] = true;
+    }
 });
 
-// --- INTERACTIONS ---
 client.on('interactionCreate', async (i) => {
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
 
+    // --- BUTTONS ---
     if (i.isButton()) {
         if (i.customId === 'gamble_slots') {
             if (db.cash[uid] < 100) return i.reply({ content: "❌ Not enough cash!", ephemeral: true });
@@ -62,60 +71,76 @@ client.on('interactionCreate', async (i) => {
             const s = [ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)]];
             const win = s[0] === s[1] && s[1] === s[2];
             if (win) db.cash[uid] += 2000;
-            return i.reply(`🎰 [ ${s[0]} | ${s[1]} | ${s[2]} ]\n${win ? '✨ **JACKPOT!** Won 2000!' : '💀 Try again.'}`);
+            return i.reply(`🎰 [ ${s[0]} | ${s[1]} | ${s[2]} ]\n${win ? '✨ **JACKPOT!**' : '💀 Try again.'}`);
         }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    if (i.commandName === 'bal') return i.reply(`💰 **Balance:** ${CURRENCY}${db.cash[uid]}`);
+    // --- UTILITY & INFO ---
+    if (i.commandName === 'help') {
+        const embed = new EmbedBuilder()
+            .setTitle("📜 Wimble Help Menu")
+            .setDescription("**/bal, /work, /daily** - Economy\n**/gamble** - Casino\n**/ship, /meme, /chat** - Fun\n**/rank, /profile, /serverinfo** - Utility")
+            .setColor(BOT_COLOR);
+        return i.reply({ embeds: [embed] });
+    }
 
+    if (i.commandName === 'serverinfo') {
+        return i.reply(`🏢 **Server:** ${i.guild.name}\n👥 **Members:** ${i.guild.memberCount}`);
+    }
+
+    if (i.commandName === 'profile') {
+        const target = i.options.getUser('u') || i.user;
+        const embed = new EmbedBuilder()
+            .setTitle(`${target.username}'s Profile`)
+            .addFields(
+                { name: '💰 Cash', value: `${CURRENCY}${db.cash[target.id] || 500}`, inline: true },
+                { name: '📊 Messages', value: `${db.messages[target.id] || 0}`, inline: true }
+            )
+            .setColor(BOT_COLOR);
+        return i.reply({ embeds: [embed] });
+    }
+
+    // --- REMAINING COMMANDS ---
+    if (i.commandName === 'bal') return i.reply(`💰 **Balance:** ${CURRENCY}${db.cash[uid]}`);
     if (i.commandName === 'work') {
         const gain = Math.floor(Math.random() * 150) + 50;
         db.cash[uid] += gain;
         return i.reply(`🔨 You earned ${CURRENCY}${gain}!`);
     }
-
     if (i.commandName === 'daily') {
         const last = db.daily[uid] || 0;
         if (Date.now() - last < 86400000) return i.reply({ content: "❌ Wait 24h!", ephemeral: true });
         db.cash[uid] += 1000; db.daily[uid] = Date.now();
         return i.reply("📆 Claimed your 1k!");
     }
-
-    if (i.commandName === 'rank') {
-        const msgs = db.messages[uid] || 0;
-        return i.reply(`📊 **Rank:** You've sent **${msgs}** messages!`);
+    if (i.commandName === 'rank') return i.reply(`📊 **Rank:** You've sent **${db.messages[uid] || 0}** messages!`);
+    if (i.commandName === 'setbirthday') {
+        db.bday[uid] = i.options.getString('date');
+        return i.reply(`🎂 Birthday set to **${db.bday[uid]}**!`);
     }
-
     if (i.commandName === 'ship') {
         const score = Math.floor(Math.random() * 101);
         return i.reply(`❤️ **Ship Meter:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is a **${score}%** match!`);
     }
-
     if (i.commandName === 'chat') {
-        const msg = i.options.getString('msg').toLowerCase();
-        let resp = "Interesting! Tell me more.";
-        if (msg.includes("hello") || msg.includes("hi")) resp = "Yo! How's it going?";
-        return i.reply(`💬 **Wimble:** ${resp}`);
+        return i.reply(`💬 **Wimble:** ${i.options.getString('msg').includes("hi") ? "Yo!" : "Interesting..."}`);
     }
-
     if (i.commandName === 'gamble') {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('gamble_slots').setLabel('🎰 Slots (100)').setStyle(ButtonStyle.Primary)
         );
         return i.reply({ content: "🎰 **Casino Hub**", components: [row] });
     }
-
     if (i.commandName === 'meme') {
         await i.deferReply();
         try {
             const res = await axios.get('https://meme-api.com/gimme');
             const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
             return i.editReply({ embeds: [embed] });
-        } catch (e) { return i.editReply("❌ Error fetching meme."); }
+        } catch { return i.editReply("❌ Meme fail!"); }
     }
-
     if (i.commandName === 'spam' && uid === OWNER_ID) {
         const text = i.options.getString('t');
         const amt = i.options.getInteger('a') || 5;
@@ -125,12 +150,6 @@ client.on('interactionCreate', async (i) => {
             await new Promise(r => setTimeout(r, 500)); 
         }
     }
-}); // <--- THIS WAS MISSING
-
-client.login(process.env.DISCORD_TOKEN); // <--- THIS WAS MISSINGout(r, 460)); 
-        }
-            }
-} // Closes the spam command 'if'
-}); // Closes the interactionCreate 'on'
+});
 
 client.login(process.env.DISCORD_TOKEN);
