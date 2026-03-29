@@ -1,111 +1,155 @@
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const CLIENT_ID = '1482790365621915759'; 
-const GUILD_ID = '1385034268438433906'; 
 const OWNER_ID = '1451533934130364467'; 
 const BOT_COLOR = '#ff0000'; 
 const CURRENCY = '💸'; 
 
-// --- ANTI-CRASH SYSTEM ---
-process.on('unhandledRejection', (r) => console.log('❌ Rejection:', r));
-process.on('uncaughtException', (e) => console.log('❌ Exception:', e));
-
 const client = new Client({ intents: [3276799] });
-let db = { cash: {}, lastDaily: {} };
 
-// --- 1. THE FIXED 26 COMMAND LIST ---
+// --- DATABASE MOCKUP ---
+let db = { 
+    cash: {}, 
+    lastDaily: {}, 
+    jobs: {}, // User ID: Job Name
+    lastWork: {} 
+};
+
+const jobList = [
+    { name: '🚗 Uber Driver', pay: 150, req: 0 },
+    { name: '🏗️ Builder', pay: 300, req: 1000 },
+    { name: '💻 Developer', pay: 600, req: 5000 }
+];
+
+// --- 1. CLEAN SLASH COMMANDS (Triggers for Buttons) ---
 const commands = [
-    // FUN (9)
-    new SlashCommandBuilder().setName('8ball').setDescription('🎱 Ask a question').addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true)),
-    new SlashCommandBuilder().setName('slots').setDescription('🎰 Gamble your money').addIntegerOption(o => o.setName('bet').setDescription('Amount to bet').setRequired(true)),
-    new SlashCommandBuilder().setName('flip').setDescription('🪙 Flip a coin'),
-    new SlashCommandBuilder().setName('roll').setDescription('🎲 Roll a 100-sided die'),
-    new SlashCommandBuilder().setName('joke').setDescription('😂 Get a random joke'),
-    new SlashCommandBuilder().setName('fact').setDescription('🧠 Get a random fact'),
-    new SlashCommandBuilder().setName('snipe').setDescription('🎯 See the last deleted message'),
-    new SlashCommandBuilder().setName('weather').setDescription('☁️ Check city weather').addStringOption(o => o.setName('city').setDescription('Name of city').setRequired(true)),
-    new SlashCommandBuilder().setName('rps').setDescription('✂️ Play Rock Paper Scissors').addStringOption(o => o.setName('choice').setDescription('Rock, Paper, or Scissors').setRequired(true)),
-    
-    // ECONOMY (7)
-    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim your daily 100 cash'),
-    new SlashCommandBuilder().setName('work').setDescription('💼 Work a shift for money'),
-    new SlashCommandBuilder().setName('bal').setDescription('💰 Check your bank balance'),
-    new SlashCommandBuilder().setName('profile').setDescription('👤 View your personal profile'),
-    new SlashCommandBuilder().setName('shop').setDescription('🛒 Open the item shop'),
-    new SlashCommandBuilder().setName('buy').setDescription('🛍️ Buy an item').addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true)),
-    new SlashCommandBuilder().setName('pay').setDescription('🤝 Send money to someone').addUserOption(o => o.setName('user').setDescription('Recipient').setRequired(true)).addIntegerOption(o => o.setName('amt').setDescription('Amount').setRequired(true)),
-    
-    // UTILITY/SOCIAL (10)
-    new SlashCommandBuilder().setName('help').setDescription('📜 View all commands'),
-    new SlashCommandBuilder().setName('whois').setDescription('🔍 Get detailed user info').addUserOption(o => o.setName('target').setDescription('The user')),
-    new SlashCommandBuilder().setName('avatar').setDescription('🖼️ Get a users profile picture').addUserOption(o => o.setName('user').setDescription('The user')),
-    new SlashCommandBuilder().setName('ping').setDescription('🛰️ Check the bots connection speed'),
-    new SlashCommandBuilder().setName('roles').setDescription('📜 List all server roles'),
-    new SlashCommandBuilder().setName('stats').setDescription('📊 View bot statistics'),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('🏰 View server details'),
-    new SlashCommandBuilder().setName('setbirthday').setDescription('🎂 Set your birthday').addStringOption(o => o.setName('date').setDescription('DD/MM format').setRequired(true)),
-    new SlashCommandBuilder().setName('checkbirthday').setDescription('🎈 See upcoming birthdays'),
-    new SlashCommandBuilder().setName('calculate').setDescription('🧮 Solve a math problem').addStringOption(o => o.setName('expression').setDescription('The math problem').setRequired(true)),
-
-    // OWNER ONLY
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Fast message spam').addStringOption(o => o.setName('text').setDescription('Message to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('How many times (Max 20)')),
+    new SlashCommandBuilder().setName('economy').setDescription('💰 Wallet & Banking'),
+    new SlashCommandBuilder().setName('jobs').setDescription('💼 Job Center: Apply, List, Quit'),
+    new SlashCommandBuilder().setName('fun').setDescription('🎮 Entertainment Hub'),
+    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t').setDescription('Target')),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏰 Server stats'),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Turbo Spam').addStringOption(o => o.setName('t').setRequired(true).setDescription('Text')).addIntegerOption(o => o.setName('a').setDescription('Amount')),
 ].map(c => c.toJSON());
 
-// --- 2. DEEP REFRESH SYNC ---
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        console.log("🛠️ Cleaning ghost commands...");
-        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] }); 
-        console.log("🛠️ Deploying 26 fresh commands...");
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands }); 
-        console.log(`✅ ${client.user.tag} is ONLINE!`);
-    } catch (e) { console.error("Sync Error:", e); }
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        console.log("✅ 35-Command Interaction System Ready!");
+    } catch (e) { console.error(e); }
 });
 
-// --- 3. THE HANDLER ---
+// --- 2. THE INTERACTION MASTER ---
 client.on('interactionCreate', async (i) => {
-    if (!i.isChatInputCommand()) return;
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
 
-    try {
-        if (i.commandName === 'whois') {
-            const member = i.options.getMember('target') || i.member;
-            const roles = member.roles.cache.filter(r => r.id !== i.guild.id).map(r => r.name).join(', ') || 'None';
-            const embed = new EmbedBuilder()
-                .setAuthor({ name: member.user.username, iconURL: member.user.displayAvatarURL() })
-                .setColor(BOT_COLOR)
-                .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .addFields(
-                    { name: 'Joined Server', value: `<t:${Math.floor(member.joinedTimestamp/1000)}:f>`, inline: false },
-                    { name: 'Created Account', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:f>`, inline: false },
-                    { name: `Roles [${member.roles.cache.size - 1}]`, value: `\`${roles}\``, inline: false }
-                ).setFooter({ text: `ID: ${member.id}` }).setTimestamp();
-            return i.reply({ embeds: [embed] });
+    // --- BUTTON HANDLER ---
+    if (i.isButton()) {
+        // JOB LIST BUTTON
+        if (i.customId === 'job_list') {
+            const list = jobList.map(j => `**${j.name}** - Pay: ${CURRENCY}${j.pay} (Requires: ${CURRENCY}${j.req})`).join('\n');
+            return i.reply({ content: `### Available Jobs:\n${list}`, ephemeral: true });
         }
 
-        if (i.commandName === 'spam') {
-            if (uid !== OWNER_ID) return i.reply({ content: "❌ Private Command.", ephemeral: true });
-            const text = i.options.getString('text');
-            let amt = i.options.getInteger('amount') || 5;
-            if (amt > 20) amt = 20; 
-            await i.reply({ content: `🚀 Turbo-Spamming...`, ephemeral: true });
-            for (let x = 0; x < amt; x++) {
-                i.channel.send(text).catch(() => {});
-                await new Promise(r => setTimeout(r, 760)); // Fast but safe
-            }
-            return;
+        // JOB APPLY BUTTON (Logic)
+        if (i.customId === 'job_apply') {
+            const currentJob = db.jobs[uid];
+            if (currentJob) return i.reply({ content: `❌ You already work as a ${currentJob}! Quit first.`, ephemeral: true });
+            
+            // Auto-assign first job for this example
+            db.jobs[uid] = jobList[0].name;
+            return i.reply({ content: `✅ You are now an **${jobList[0].name}**! Use \`/economy\` and click Work.`, ephemeral: true });
         }
 
-        if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY} ${db.cash[uid].toLocaleString()}`);
-        if (i.commandName === 'daily') {
-            db.cash[uid] += 100;
-            return i.reply(`💸 You claimed your daily **${CURRENCY} 100**!`);
+        // JOB QUIT BUTTON
+        if (i.customId === 'job_quit') {
+            if (!db.jobs[uid]) return i.reply({ content: "❌ You don't even have a job!", ephemeral: true });
+            delete db.jobs[uid];
+            return i.reply({ content: "👋 You quit your job. You are now unemployed.", ephemeral: true });
         }
 
-        if (!i.replied) return i.reply({ content: `✅ **${i.commandName}** is active!`, ephemeral: true });
-    } catch (err) { console.error(err); }
+        // ECONOMY: WORK BUTTON
+        if (i.customId === 'eco_work') {
+            if (!db.jobs[uid]) return i.reply({ content: "❌ You need to apply for a job first! Use `/jobs`", ephemeral: true });
+            const last = db.lastWork[uid] || 0;
+            if (Date.now() - last < 3600000) return i.reply({ content: "⏳ You're tired! Work again in 1 hour.", ephemeral: true });
+            
+            const jobObj = jobList.find(j => j.name === db.jobs[uid]);
+            db.cash[uid] += jobObj.pay;
+            db.lastWork[uid] = Date.now();
+            return i.reply({ content: `🔨 You worked as a **${jobObj.name}** and earned **${CURRENCY}${jobObj.pay}**!`, ephemeral: true });
+        }
+
+        // ROLES BUTTON (Whois/Serverinfo)
+        if (i.customId === 'view_roles') {
+            const roles = i.guild.roles.cache.filter(r => r.id !== i.guild.id).map(r => `<@&${r.id}>`).join(', ');
+            return i.reply({ embeds: [new EmbedBuilder().setTitle("📜 Server Roles").setColor(BOT_COLOR).setDescription(roles.substring(0, 2000))], ephemeral: true });
+        }
+    }
+
+    if (!i.isChatInputCommand()) return;
+
+    // --- SLASH COMMAND HANDLERS ---
+
+    // /JOBS
+    if (i.commandName === 'jobs') {
+        const embed = new EmbedBuilder()
+            .setTitle("💼 Job Center")
+            .setDescription(`**Current Job:** ${db.jobs[uid] || 'Unemployed'}\n\nApply for a job to start earning more than just daily rewards!`)
+            .setColor(BOT_COLOR);
+        
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('job_list').setLabel('List Jobs').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('job_apply').setLabel('Apply for Job').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('job_quit').setLabel('Quit Job').setStyle(ButtonStyle.Danger)
+        );
+        return i.reply({ embeds: [embed], components: [row] });
+    }
+
+    // /ECONOMY
+    if (i.commandName === 'economy') {
+        const embed = new EmbedBuilder()
+            .setTitle(`💰 ${i.user.username}'s Wallet`)
+            .setDescription(`**Balance:** ${CURRENCY} ${db.cash[uid].toLocaleString()}\n**Job:** ${db.jobs[uid] || 'None'}`)
+            .setColor(BOT_COLOR);
+        
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('eco_work').setLabel('Work').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('eco_bal').setLabel('Refresh Bal').setStyle(ButtonStyle.Secondary)
+        );
+        return i.reply({ embeds: [embed], components: [row] });
+    }
+
+    // /SERVERINFO
+    if (i.commandName === 'serverinfo') {
+        const owner = await i.guild.fetchOwner();
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: i.guild.name, iconURL: i.guild.iconURL() })
+            .setThumbnail(i.guild.iconURL({ dynamic: true }))
+            .setColor(BOT_COLOR)
+            .addFields(
+                { name: 'Owner', value: `${owner.user.tag}`, inline: true },
+                { name: 'Members', value: `👤 ${i.guild.memberCount}`, inline: true }
+            );
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('view_roles').setLabel('View Roles').setStyle(ButtonStyle.Primary)
+        );
+        return i.reply({ embeds: [embed], components: [row] });
+    }
+
+    // /SPAM
+    if (i.commandName === 'spam') {
+        if (uid !== OWNER_ID) return i.reply({ content: "❌ Owner only!", ephemeral: true });
+        const text = i.options.getString('t');
+        let amt = i.options.getInteger('a') || 5;
+        if (amt > 20) amt = 20;
+        await i.reply({ content: `🚀 Turbo-Spamming...`, ephemeral: true });
+        for (let x = 0; x < amt; x++) {
+            i.channel.send(text).catch(() => {});
+            await new Promise(r => setTimeout(r, 740)); 
+        }
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN);
