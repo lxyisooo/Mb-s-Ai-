@@ -151,3 +151,7 @@ if (!i.isChatInputCommand()) return;
             await new Promise(r => setTimeout(r, 460)); 
         }
             }
+} // Closes the spam command 'if'
+}); // Closes the interactionCreate 'on'
+
+client.login(process.env.DISCORD_TOKEN);
