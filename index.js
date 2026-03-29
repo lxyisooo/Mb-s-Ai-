@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const axios = require('axios'); 
 
 const CLIENT_ID = '1482790365621915759'; 
@@ -8,148 +8,132 @@ const BOT_COLOR = '#ff0000';
 const CURRENCY = '💸'; 
 
 const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// --- DATABASE (In-Memory) ---
 let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, bday: {} };
 
-// --- COMMAND DEFINITIONS ---
 const commands = [
-    new SlashCommandBuilder().setName('help').setDescription('📜 View all commands'),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Get server stats'),
-    new SlashCommandBuilder().setName('profile').setDescription('👤 View your profile card').addUserOption(o => o.setName('u').setDescription('User to view')),
-    new SlashCommandBuilder().setName('chat').setDescription('💬 Talk to Me').addStringOption(o => o.setName('msg').setDescription('Your message').setRequired(true)),
-    new SlashCommandBuilder().setName('meme').setDescription('🤣 Get a random meme'),
-    new SlashCommandBuilder().setName('setbirthday').setDescription('🎂 Set your birthday (DD/MM)').addStringOption(o => o.setName('date').setDescription('e.g. 27/02').setRequired(true)),
-    new SlashCommandBuilder().setName('rank').setDescription('📊 Check your message count'),
-    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setDescription('User 1').setRequired(true)).addUserOption(o => o.setName('u2').setDescription('User 2').setRequired(true)),
-    new SlashCommandBuilder().setName('gamble').setDescription('🎰 Enter the Casino Hub'),
-    new SlashCommandBuilder().setName('bal').setDescription('💰 Check your balance'),
+    new SlashCommandBuilder().setName('help').setDescription('📜 Main Menu'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Server statistics'),
+    new SlashCommandBuilder().setName('whois').setDescription('ℹ️ User information').addUserOption(o => o.setName('u').setRequired(true)),
+    new SlashCommandBuilder().setName('images').setDescription('🖼️ Image Hub (NASA, Dog, Cat)'),
+    new SlashCommandBuilder().setName('bal').setDescription('💰 Check cash'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Earn cash'),
-    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim daily 1k'),
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setDescription('Text').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount')),
+    new SlashCommandBuilder().setName('shop').setDescription('🛒 Wimble Mall'),
+    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose').addUserOption(o => o.setName('u').setRequired(true)),
+    new SlashCommandBuilder().setName('divorce').setDescription('💔 End marriage'),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("🔥 WIMBLE OMEGA IS LIVE!");
+        console.log("🔥 WIMBLE OMEGA ONLINE");
     } catch (e) { console.error(e); }
-});
-
-// --- MESSAGE TRACKING & BIRTHDAYS ---
-client.on('messageCreate', (m) => {
-    if (m.author.bot) return;
-    const uid = m.author.id;
-    db.messages[uid] = (db.messages[uid] || 0) + 1;
-    db.cash[uid] = (db.cash[uid] || 500) + 2;
-
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-    if (db.bday[uid] === today && !db.streaks[`bday_${uid}`]) {
-        m.reply(`🎂 **HAPPY BIRTHDAY!** Wimble gifted you ${CURRENCY}5000!`);
-        db.cash[uid] += 5000;
-        db.streaks[`bday_${uid}`] = true;
-    }
 });
 
 client.on('interactionCreate', async (i) => {
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
 
-    // --- BUTTONS ---
+    // --- BUTTON HUB: IMAGES & SYSTEM ---
     if (i.isButton()) {
-        if (i.customId === 'gamble_slots') {
-            if (db.cash[uid] < 100) return i.reply({ content: "❌ Not enough cash!", ephemeral: true });
-            db.cash[uid] -= 100;
-            const ems = ['💎', '🍎', '⭐'];
-            const s = [ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)]];
-            const win = s[0] === s[1] && s[1] === s[2];
-            if (win) db.cash[uid] += 2000;
-            return i.reply(`🎰 [ ${s[0]} | ${s[1]} | ${s[2]} ]\n${win ? '✨ **JACKPOT!**' : '💀 Try again.'}`);
+        // Image Hub Buttons
+        if (i.customId === 'img_nasa') {
+            const res = await axios.get('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY');
+            const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
+            return i.update({ embeds: [embed] });
         }
+        if (i.customId === 'img_dog') {
+            const res = await axios.get('https://dog.ceo/api/breeds/image/random');
+            const embed = new EmbedBuilder().setTitle("🐶 Random Dog").setImage(res.data.message).setColor(BOT_COLOR);
+            return i.update({ embeds: [embed] });
+        }
+        if (i.customId === 'img_cat') {
+            const res = await axios.get('https://api.thecatapi.com/v1/images/search');
+            const embed = new EmbedBuilder().setTitle("🐱 Random Cat").setImage(res.data[0].url).setColor(BOT_COLOR);
+            return i.update({ embeds: [embed] });
+        }
+
+        // Server Info Buttons (Matches Screenshots)
+        if (i.customId === 'view_roles') {
+            const roles = i.guild.roles.cache.sort((a, b) => b.position - a.position).map(r => r.toString()).join(' ');
+            return i.reply({ content: `**Roles [${i.guild.roles.cache.size}]:**\n${roles.slice(0, 2000)}`, ephemeral: true });
+        }
+        if (i.customId === 'show_owner') {
+            const owner = await i.guild.fetchOwner();
+            return i.reply({ content: `👑 **Server Owner:** ${owner.user.tag}`, ephemeral: true });
+        }
+        
+        // Navigation
+        if (i.customId === 'nav_main') return i.update(mainHelp());
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- UTILITY & INFO ---
-    if (i.commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle("📜 Wimble Help Menu")
-            .setDescription("**/bal, /work, /daily** - Economy\n**/gamble** - Casino\n**/ship, /meme, /chat** - Fun\n**/rank, /profile, /serverinfo** - Utility")
-            .setColor(BOT_COLOR);
-        return i.reply({ embeds: [embed] });
-    }
-
-    if (i.commandName === 'serverinfo') {
-        return i.reply(`🏢 **Server:** ${i.guild.name}\n👥 **Members:** ${i.guild.memberCount}`);
-    }
-
-    if (i.commandName === 'profile') {
-        const target = i.options.getUser('u') || i.user;
-        const embed = new EmbedBuilder()
-            .setTitle(`${target.username}'s Profile`)
-            .addFields(
-                { name: '💰 Cash', value: `${CURRENCY}${db.cash[target.id] || 500}`, inline: true },
-                { name: '📊 Messages', value: `${db.messages[target.id] || 0}`, inline: true }
-            )
-            .setColor(BOT_COLOR);
-        return i.reply({ embeds: [embed] });
-    }
-
-    // --- REMAINING COMMANDS ---
-    if (i.commandName === 'bal') return i.reply(`💰 **Balance:** ${CURRENCY}${db.cash[uid]}`);
-    if (i.commandName === 'work') {
-        const gain = Math.floor(Math.random() * 150) + 50;
-        db.cash[uid] += gain;
-        return i.reply(`🔨 You earned ${CURRENCY}${gain}!`);
-    }
-    if (i.commandName === 'daily') {
-        const last = db.daily[uid] || 0;
-        if (Date.now() - last < 86400000) return i.reply({ content: "❌ Wait 24h!", ephemeral: true });
-        db.cash[uid] += 1000; db.daily[uid] = Date.now();
-        return i.reply("📆 Claimed your 1k!");
-    }
-    if (i.commandName === 'rank') return i.reply(`📊 **Rank:** You've sent **${db.messages[uid] || 0}** messages!`);
-    if (i.commandName === 'setbirthday') {
-        db.bday[uid] = i.options.getString('date');
-        return i.reply(`🎂 Birthday set to **${db.bday[uid]}**!`);
-    }
-    if (i.commandName === 'ship') {
-        const score = Math.floor(Math.random() * 101);
-        return i.reply(`❤️ **Ship Meter:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is a **${score}%** match!`);
-    }
-    if (i.commandName === 'chat') {
-        return i.reply(`💬 **Wimble:** ${i.options.getString('msg').includes("hi") ? "Yo!" : "Interesting..."}`);
-    }
-    if (i.commandName === 'gamble') {
+    // --- IMAGE HUB COMMAND ---
+    if (i.commandName === 'images') {
+        const embed = new EmbedBuilder().setTitle("🖼️ Wimble Image Hub").setDescription("Choose a category below to generate an image!").setColor(BOT_COLOR);
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('gamble_slots').setLabel('🎰 Slots (100)').setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId('img_nasa').setLabel('🚀 NASA').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('img_dog').setLabel('🐶 Dog').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('img_cat').setLabel('🐱 Cat').setStyle(ButtonStyle.Danger)
         );
-        return i.reply({ content: "🎰 **Casino Hub**", components: [row] });
+        return i.reply({ embeds: [embed], components: [row] });
     }
-    if (i.commandName === 'meme') {
-        await i.deferReply();
-        try {
-            const res = await axios.get('https://meme-api.com/gimme');
-            const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
-            return i.editReply({ embeds: [embed] });
-        } catch { return i.editReply("❌ Meme fail!"); }
+
+    // --- SERVERINFO (MATCHES SCREENSHOT) ---
+    if (i.commandName === 'serverinfo') {
+        const embed = new EmbedBuilder()
+            .setTitle(i.guild.name)
+            .setColor(BOT_COLOR)
+            .addFields(
+                { name: 'Members', value: `${i.guild.memberCount}`, inline: false },
+                { name: 'Roles', value: `${i.guild.roles.cache.size}`, inline: false },
+                { name: 'Category Channels', value: `${i.guild.channels.cache.filter(c => c.type === 4).size}`, inline: false },
+                { name: 'Text Channels', value: `${i.guild.channels.cache.filter(c => c.type === 0).size}`, inline: false },
+                { name: 'Voice Channels', value: `${i.guild.channels.cache.filter(c => c.type === 2).size}`, inline: false },
+                { name: 'Boost Count', value: `${i.guild.premiumSubscriptionCount} Boosts (Tier ${i.guild.premiumTier})`, inline: false }
+            )
+            .setFooter({ text: `ID: ${i.guild.id} | Server Created | ${i.guild.createdAt.toLocaleDateString()}` });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('view_roles').setLabel('View Roles').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('show_owner').setLabel('Show Owner').setStyle(ButtonStyle.Secondary)
+        );
+        return i.reply({ embeds: [embed], components: [row] });
     }
-    if (i.commandName === 'spam' && uid === OWNER_ID) {
-        const text = i.options.getString('t');
-        const amt = i.options.getInteger('a') || 5;
-        await i.reply({ content: "🚀", ephemeral: true });
-        for (let x = 0; x < Math.min(amt, 15); x++) { 
-            await i.channel.send(text); 
-            await new Promise(r => setTimeout(r, 500)); 
-        }
+
+    // --- WHOIS (MATCHES SCREENSHOT) ---
+    if (i.commandName === 'whois') {
+        const target = i.options.getUser('u');
+        const member = await i.guild.members.fetch(target.id);
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: target.tag, iconURL: target.displayAvatarURL() })
+            .setTitle(target.username)
+            .setThumbnail(target.displayAvatarURL())
+            .addFields(
+                { name: 'Joined', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>\n<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: false },
+                { name: 'Registered', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:F>\n<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: false },
+                { name: `Roles [${member.roles.cache.size - 1}]`, value: 'Too many roles to show.', inline: false }
+            )
+            .setColor(BOT_COLOR)
+            .setFooter({ text: `ID: ${target.id} | Today at ${new Date().toLocaleTimeString()}` });
+        return i.reply({ embeds: [embed] });
     }
+
+    if (i.commandName === 'help') return i.reply(mainHelp());
 });
+
+function mainHelp() {
+    const embed = new EmbedBuilder().setTitle("📜 Wimble Commands").setColor(BOT_COLOR).setDescription("Select a category below!");
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('nav_eco').setLabel('💰 Economy').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('nav_social').setLabel('❤️ Social').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('nav_fun').setLabel('🖼️ Fun').setStyle(ButtonStyle.Danger)
+    );
+    return { embeds: [embed], components: [row] };
+}
 
 client.login(process.env.DISCORD_TOKEN);
