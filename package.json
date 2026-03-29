@@ -1,13 +1,17 @@
 {
-  "name": "Mb's-bot",
-  "version": "1.1.0",
-  "description": "Discord bot with economy and leveling",
+  "name": "wimble-bot",
+  "version": "2.0.0",
+  "description": "The ultimate Discord bot for Wimble community",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "axios": "^1.6.7"
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=16.11.0"
   }
 }
