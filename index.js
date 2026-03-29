@@ -9,59 +9,56 @@ const CURRENCY = '💸';
 
 const client = new Client({ intents: [3276799] });
 
-// Database including leveling and streaks
 let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, lastMsg: {} };
+
+// --- HELPER: GHOST PING ---
+async function ghostPing(channel, user) {
+    const msg = await channel.send(`${user}`);
+    return msg.delete().catch(() => {}); 
+}
 
 const commands = [
     new SlashCommandBuilder().setName('help').setDescription('📜 View all bot commands'),
     new SlashCommandBuilder().setName('gamble').setDescription('🎰 Open the Casino Hub'),
     new SlashCommandBuilder().setName('images').setDescription('🖼️ View random images'),
-    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose').addUserOption(o => o.setName('u').setRequired(true)),
+    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose').addUserOption(o => o.setName('u').setDescription('User to propose to').setRequired(true)),
     new SlashCommandBuilder().setName('divorce').setDescription('💔 End marriage'),
     new SlashCommandBuilder().setName('profile').setDescription('👤 View stats'),
-    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setRequired(true)).addUserOption(o => o.setName('u2').setRequired(true)),
-    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob someone').addUserOption(o => o.setName('t').setRequired(true)),
+    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setDescription('First person').setRequired(true)).addUserOption(o => o.setName('u2').setDescription('Second person').setRequired(true)),
+    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob someone').addUserOption(o => o.setName('t').setDescription('The target to rob').setRequired(true)),
     new SlashCommandBuilder().setName('shop').setDescription('🛒 Buy items'),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check wallet'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Earn money'),
     new SlashCommandBuilder().setName('daily').setDescription('📆 Claim cash'),
-    new SlashCommandBuilder().setName('rank').setDescription('📊 View your message stats').addUserOption(o => o.setName('u')),
+    new SlashCommandBuilder().setName('rank').setDescription('📊 View your message stats').addUserOption(o => o.setName('u').setDescription('User to check')),
     new SlashCommandBuilder().setName('messages').setDescription('💬 Your total messages sent'),
     new SlashCommandBuilder().setName('leaderboard').setDescription('🏆 Top 10 most active members'),
     new SlashCommandBuilder().setName('streak').setDescription('🔥 View your daily activity streak'),
-    new SlashCommandBuilder().setName('weather').setDescription('☁️ Weather').addStringOption(o => o.setName('city').setRequired(true)),
-    new SlashCommandBuilder().setName('define').setDescription('📖 Dictionary').addStringOption(o => o.setName('word').setRequired(true)),
-    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t')),
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setRequired(true)).addIntegerOption(o => o.setName('a')),
+    new SlashCommandBuilder().setName('weather').setDescription('☁️ Weather').addStringOption(o => o.setName('city').setDescription('City name').setRequired(true)),
+    new SlashCommandBuilder().setName('define').setDescription('📖 Dictionary').addStringOption(o => o.setName('word').setDescription('Word to look up').setRequired(true)),
+    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t').setDescription('User to inspect')),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Get details about this server'),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount of messages')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        console.log("🧹 Cleaning old commands...");
-        // Deletes old global commands so they don't show up twice
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] }); 
-        // Registers fresh guild commands
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("✅ Wimble is Online and Clean!");
+        console.log("✅ Wimble is fully loaded with all commands!");
     } catch (e) { console.error(e); }
 });
 
-// --- ACTIVITY TRACKER (CASH PER MESSAGE) ---
 client.on('messageCreate', (m) => {
     if (m.author.bot) return;
     const uid = m.author.id;
-
-    // Give 2-5 cash per message
     db.cash[uid] = (db.cash[uid] || 500) + Math.floor(Math.random() * 4) + 2;
     db.messages[uid] = (db.messages[uid] || 0) + 1;
-
-    // Streak Logic (24h - 48h window)
     const now = Date.now();
     const diff = now - (db.lastMsg[uid] || 0);
-    const day = 86400000;
-    if (diff > day && diff < day * 2) db.streaks[uid] = (db.streaks[uid] || 0) + 1;
-    else if (diff > day * 2) db.streaks[uid] = 1;
+    if (diff > 86400000 && diff < 172800000) db.streaks[uid] = (db.streaks[uid] || 0) + 1;
+    else if (diff > 172800000) db.streaks[uid] = 1;
     db.lastMsg[uid] = now;
 });
 
@@ -71,37 +68,35 @@ client.on('interactionCreate', async (i) => {
     if (!db.items[uid]) db.items[uid] = { padlocks: 0 };
 
     if (i.isButton()) {
-        if (i.customId.startsWith('gamble_')) {
-            if (db.cash[uid] < 100) return i.reply({ content: "❌ You need 100 to gamble!", ephemeral: true });
+        // --- SERVER ROLES PAGINATION (20 ROLES PER EMBED, UP TO 5 EMBEDS) ---
+        if (i.customId === 'server_roles') {
+            const roles = i.guild.roles.cache.filter(r => r.name !== '@everyone').sort((a, b) => b.position - a.position).map(r => r.toString());
+            const embeds = [];
+            for (let x = 0; x < roles.length; x += 20) {
+                if (embeds.length >= 5) break;
+                embeds.push(new EmbedBuilder().setTitle(`🎭 Roles Page ${embeds.length + 1}`).setColor(BOT_COLOR).setDescription(roles.slice(x, x + 20).join(' ')));
+            }
+            return i.reply({ embeds, ephemeral: true });
         }
 
+        if (i.customId === 'server_owner') {
+            const owner = await i.guild.fetchOwner();
+            return i.reply({ content: `👑 **Owner:** ${owner.user.tag}`, ephemeral: true });
+        }
+
+        // --- ECONOMY BUTTONS ---
+        if (i.customId.startsWith('gamble_') && db.cash[uid] < 100) return i.reply({ content: "❌ You need 100 to gamble!", ephemeral: true });
+        
         if (i.customId === 'gamble_slots') {
             const win = Math.random() > 0.7;
             if (win) { db.cash[uid] += 200; return i.reply(`🎰 **WIN!** Won **${CURRENCY}200**!`); }
             else { db.cash[uid] -= 100; return i.reply(`🎰 **LOSS!** Lost **${CURRENCY}100**.`); }
         }
 
-        if (i.customId === 'gamble_coin') {
-            const win = Math.random() > 0.5;
-            if (win) { db.cash[uid] += 100; return i.reply(`🪙 **Heads!** Won **${CURRENCY}100**!`); }
-            else { db.cash[uid] -= 100; return i.reply(`🪙 **Tails!** Lost **${CURRENCY}100**.`); }
-        }
-
-        if (i.customId === 'gamble_roulette') {
-            const win = Math.random() > 0.6;
-            if (win) { db.cash[uid] += 250; return i.reply(`🟢 **GREEN!** Won **${CURRENCY}250**!`); }
-            else { db.cash[uid] -= 100; return i.reply(`🔴 **RED.** Lost **${CURRENCY}100**.`); }
-        }
-
-        if (i.customId === 'gamble_scratch') {
-            const win = Math.random() > 0.8;
-            if (win) { db.cash[uid] += 500; return i.reply(`🎫 **JACKPOT!** Won **${CURRENCY}500**!`); }
-            else { db.cash[uid] -= 100; return i.reply(`🎫 **No match.** Lost **${CURRENCY}100**.`); }
-        }
-
-        if (i.customId === 'gamble_bombs') {
-            if (Math.random() > 0.5) { db.cash[uid] -= 100; return i.reply(`💣 **BOOM!** Lost **${CURRENCY}100**.`); }
-            else { db.cash[uid] += 150; return i.reply(`📦 **SAFE!** Found **${CURRENCY}150**.`); }
+        if (i.customId === 'buy_padlock') {
+            if (db.cash[uid] < 500) return i.reply({ content: "❌ You need 500!", ephemeral: true });
+            db.cash[uid] -= 500; db.items[uid].padlocks += 1;
+            return i.reply(`🛒 Bought a **Padlock**! Total: ${db.items[uid].padlocks}`);
         }
 
         if (i.customId === 'img_cat') {
@@ -113,74 +108,86 @@ client.on('interactionCreate', async (i) => {
 
     if (!i.isChatInputCommand()) return;
 
-    // --- HELP COMMAND ---
-    if (i.commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle("📜 Wimble Commands")
-            .setColor(BOT_COLOR)
-            .addFields(
-                { name: '💰 Economy', value: '`/bal`, `/work`, `/rob`, `/gamble`, `/shop`, `/daily`' },
-                { name: '📊 Stats', value: '`/rank`, `/messages`, `/leaderboard`, `/streak`' },
-                { name: '❤️ Social', value: '`/marry`, `/divorce`, `/ship`, `/profile`, `/whois`' },
-                { name: '🖼️ Fun', value: '`/images`, `/weather`, `/define`' }
-            );
+    // --- UTILITY COMMANDS ---
+    if (i.commandName === 'serverinfo') {
+        await ghostPing(i.channel, i.user);
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('server_roles').setLabel('View Roles').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('server_owner').setLabel('Show Owner').setStyle(ButtonStyle.Secondary)
+        );
+        const embed = new EmbedBuilder().setTitle(`🏢 ${i.guild.name}`).setThumbnail(i.guild.iconURL()).setColor(BOT_COLOR).addFields(
+            { name: '👥 Members', value: `${i.guild.memberCount}`, inline: true },
+            { name: '🎭 Roles', value: `${i.guild.roles.cache.size}`, inline: true },
+            { name: '📅 Created', value: `<t:${Math.floor(i.guild.createdTimestamp / 1000)}:R>`, inline: true }
+        );
+        return i.reply({ embeds: [embed], components: [row] });
+    }
+
+    if (i.commandName === 'whois') {
+        const target = i.options.getUser('t') || i.user;
+        const member = await i.guild.members.fetch(target.id);
+        const roles = member.roles.cache.filter(r => r.name !== '@everyone').map(r => r.toString());
+        const roleDisplay = roles.length > 20 ? roles.slice(0, 20).join(' ') + ` ... and ${roles.length - 20} more` : roles.join(' ') || "None";
+        const embed = new EmbedBuilder().setTitle(`🔍 ${target.username}`).setThumbnail(target.displayAvatarURL()).setColor(BOT_COLOR).addFields(
+            { name: 'Joined', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true },
+            { name: 'Created', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: true },
+            { name: `Roles [${roles.length}]`, value: roleDisplay }
+        );
         return i.reply({ embeds: [embed] });
     }
 
-    // --- LEVELING COMMANDS ---
-    if (i.commandName === 'messages') return i.reply(`💬 You have sent **${db.messages[uid] || 0}** messages!`);
-    
-    if (i.commandName === 'rank') {
-        const target = i.options.getUser('u') || i.user;
-        const embed = new EmbedBuilder()
-            .setTitle(`${target.username}'s Rank`)
-            .setColor(BOT_COLOR)
-            .addFields(
-                { name: '💬 Messages', value: `${db.messages[target.id] || 0}`, inline: true },
-                { name: '🔥 Streak', value: `${db.streaks[target.id] || 1} Days`, inline: true },
-                { name: '💰 Wallet', value: `${CURRENCY}${db.cash[target.id] || 0}`, inline: true }
-            );
-        return i.reply({ embeds: [embed] });
-    }
-
-    if (i.commandName === 'leaderboard') {
-        const sorted = Object.entries(db.messages).sort(([,a],[,b]) => b-a).slice(0, 10);
-        const lb = sorted.map(([id, cnt], index) => `**#${index+1}** <@${id}>: ${cnt} messages`).join('\n');
-        return i.reply(`🏆 **Activity Leaderboard**\n${lb || "No data yet!"}`);
-    }
-
-    if (i.commandName === 'streak') return i.reply(`🔥 Your current streak is: **${db.streaks[uid] || 1} days**!`);
-
-    // --- EXISTING COMMANDS ---
-    if (i.commandName === 'gamble') {
-        const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('gamble_slots').setLabel('Slots').setEmoji('🎰').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('gamble_coin').setLabel('Coinflip').setEmoji('🪙').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('gamble_roulette').setLabel('Roulette').setEmoji('🎡').setStyle(ButtonStyle.Success)
-        );
-        const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('gamble_scratch').setLabel('Scratch').setEmoji('🎫').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('gamble_bombs').setLabel('Bombs').setEmoji('💣').setStyle(ButtonStyle.Secondary)
-        );
-        return i.reply({ content: "🎰 **CASINO HUB** 🎰", components: [row1, row2] });
-    }
-
+    // --- ECONOMY COMMANDS ---
     if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
     if (i.commandName === 'work') {
         const gain = Math.floor(Math.random() * 200) + 50;
-        db.cash[uid] += gain;
-        return i.reply(`🔨 Earned **${CURRENCY}${gain}**!`);
+        db.cash[uid] += gain; return i.reply(`🔨 Earned **${CURRENCY}${gain}**!`);
+    }
+    if (i.commandName === 'daily') {
+        const last = db.daily[uid] || 0;
+        if (Date.now() - last < 86400000) return i.reply("❌ Tomorrow!");
+        db.cash[uid] += 1000; db.daily[uid] = Date.now();
+        return i.reply(`📆 Claimed **${CURRENCY}1000**!`);
+    }
+    if (i.commandName === 'shop') {
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('buy_padlock').setLabel('Buy Padlock (500)').setStyle(ButtonStyle.Success));
+        const embed = new EmbedBuilder().setTitle("🛒 Shop").setDescription(`🔒 **Padlock**: ${CURRENCY}500\nStops 1 robbery!`).setColor(BOT_COLOR);
+        return i.reply({ embeds: [embed], components: [row] });
+    }
+    if (i.commandName === 'rob') {
+        const target = i.options.getUser('t');
+        if (target.id === uid) return i.reply("No.");
+        if (db.items[target.id]?.padlocks > 0) { db.items[target.id].padlocks -= 1; return i.reply(`🛡️ Robbery failed! ${target.username} had a padlock!`); }
+        if ((db.cash[target.id] || 0) < 200) return i.reply("Too poor.");
+        if (Math.random() > 0.5) {
+            const stolen = Math.floor(db.cash[target.id] * 0.2);
+            db.cash[uid] += stolen; db.cash[target.id] -= stolen;
+            return i.reply(`🔫 Stole **${CURRENCY}${stolen}**!`);
+        } else { db.cash[uid] -= 100; return i.reply("👮 Busted! Paid 100 fine."); }
     }
 
-    if (i.commandName === 'spam') {
-        if (uid !== OWNER_ID) return i.reply("❌ No.");
+    // --- SOCIAL & FUN ---
+    if (i.commandName === 'help') {
+        const embed = new EmbedBuilder().setTitle("📜 Wimble Commands").setColor(BOT_COLOR).addFields(
+            { name: '💰 Economy', value: '`/bal`, `/work`, `/rob`, `/gamble`, `/shop`, `/daily`' },
+            { name: '📊 Stats', value: '`/rank`, `/leaderboard`, `/streak`' },
+            { name: '❤️ Social', value: '`/marry`, `/ship`, `/profile`, `/whois`' },
+            { name: '🖼️ Fun', value: '`/images`, `/weather`, `/define`, `/serverinfo`' }
+        );
+        return i.reply({ embeds: [embed] });
+    }
+    if (i.commandName === 'gamble') {
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('gamble_slots').setLabel('Slots').setStyle(ButtonStyle.Primary));
+        return i.reply({ content: "🎰 **Casino Hub**", components: [row] });
+    }
+    if (i.commandName === 'images') {
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('img_cat').setLabel('🐱 Cat').setStyle(ButtonStyle.Primary));
+        return i.reply({ content: "🖼️ Image Hub", components: [row] });
+    }
+    if (i.commandName === 'spam' && uid === OWNER_ID) {
         const text = i.options.getString('t');
-        const amt = i.options.getInteger('a') || 5;
-        await i.reply({ content: "🚀 Running...", ephemeral: true });
-        for (let x = 0; x < (amt > 15 ? 15 : amt); x++) {
-            i.channel.send(text).catch(() => {});
-            await new Promise(r => setTimeout(r, 800)); 
-        }
+        const amt = Math.min(i.options.getInteger('a') || 5, 15);
+        i.reply({ content: "🚀 Running...", ephemeral: true });
+        for (let x = 0; x < amt; x++) { i.channel.send(text); await new Promise(r => setTimeout(r, 1000)); }
     }
 });
 
