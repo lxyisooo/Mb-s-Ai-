@@ -20,7 +20,7 @@ const commands = [
     new SlashCommandBuilder().setName('images').setDescription('🖼️ Image Hub for NASA, Dogs, and Cats'),
     new SlashCommandBuilder().setName('spam').setDescription('📢 [OWNER ONLY] Spam a message').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
     // THE NEW REPLY COMMAND
-    new SlashCommandBuilder().setName('⌨️').setDescription('💬 [OWNER ONLY] ").addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
+    new SlashCommandBuilder().setName('⌨️').setDescription('💬 This').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check your current balance'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Work to earn some cash'),
     new SlashCommandBuilder().setName('rob').setDescription('👤 Attempt to rob another user').addUserOption(o => o.setName('u').setDescription('User to rob').setRequired(true)),
