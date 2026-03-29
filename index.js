@@ -7,7 +7,13 @@ const OWNER_ID = '1451533934130364467';
 const BOT_COLOR = '#ff0000'; 
 const CURRENCY = '💸'; 
 
-const client = new Client({ intents: [3276799] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ] 
+});
 
 // --- DATABASE (In-Memory) ---
 let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, lastMsg: {}, bday: {} };
@@ -18,11 +24,11 @@ async function ghostPing(channel, user) {
     return msg.delete().catch(() => {}); 
 }
 
-// --- COMMAND DEFINITIONS (FIXED DESCRIPTIONS) ---
+// --- COMMAND DEFINITIONS ---
 const commands = [
     new SlashCommandBuilder().setName('help').setDescription('📜 View all commands'),
     new SlashCommandBuilder().setName('chat').setDescription('💬 Talk to Me').addStringOption(o => o.setName('msg').setDescription('Your message to the bot').setRequired(true)),
-    new SlashBuilder().setName('meme').setDescription('🤣 Get a random meme from Reddit'),
+    new SlashCommandBuilder().setName('meme').setDescription('🤣 Get a random meme from Reddit'), // FIXED THIS LINE
     new SlashCommandBuilder().setName('setbirthday').setDescription('🎂 Set your birthday (DD/MM)').addStringOption(o => o.setName('date').setDescription('e.g. 27/02').setRequired(true)),
     new SlashCommandBuilder().setName('leaderboard').setDescription('🏆 See the top 10 richest members'),
     new SlashCommandBuilder().setName('rank').setDescription('📊 Check your message count'),
@@ -42,7 +48,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("🔥 WIMBLE OMEGA IS LIVE AND FIXED!");
+        console.log("🔥 WIMBLE OMEGA IS LIVE!");
     } catch (e) { console.error(e); }
 });
 
@@ -51,11 +57,9 @@ client.on('messageCreate', (m) => {
     if (m.author.bot) return;
     const uid = m.author.id;
     
-    // Track stats
     db.messages[uid] = (db.messages[uid] || 0) + 1;
     db.cash[uid] = (db.cash[uid] || 500) + 2;
 
-    // Check Birthday
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
     if (db.bday[uid] === today && !db.streaks[`bday_${uid}`]) {
         m.reply(`🎂 **HAPPY BIRTHDAY <@${uid}>!** Wimble gifted you ${CURRENCY}5000!`);
@@ -69,7 +73,6 @@ client.on('interactionCreate', async (i) => {
     if (!db.cash[uid]) db.cash[uid] = 500;
     if (!db.items[uid]) db.items[uid] = { padlocks: 0 };
 
-    // --- BUTTONS ---
     if (i.isButton()) {
         if (i.customId === 'gamble_slots') {
             if (db.cash[uid] < 100) return i.reply({ content: "❌ You need 100 to play!", ephemeral: true });
@@ -84,16 +87,10 @@ client.on('interactionCreate', async (i) => {
             }, 1000);
             return;
         }
-        if (i.customId === 'buy_padlock') {
-            if (db.cash[uid] < 500) return i.reply({ content: "❌ Not enough cash!", ephemeral: true });
-            db.cash[uid] -= 500; db.items[uid].padlocks++;
-            return i.reply(`🔒 Bought a **Padlock**! You now have ${db.items[uid].padlocks}.`);
-        }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- LOGIC ---
     if (i.commandName === 'setbirthday') {
         const date = i.options.getString('date');
         db.bday[uid] = date;
@@ -112,54 +109,26 @@ client.on('interactionCreate', async (i) => {
         const msg = i.options.getString('msg').toLowerCase();
         let resp = "That's interesting! Tell me more.";
         if (msg.includes("hello") || msg.includes("hi")) resp = "Yo! How's it going?";
-        if (msg.includes("how are you")) resp = "I'm running at 100% power! Ready to help.";
-        if (msg.includes("owner")) resp = "My owner is the GOAT. No cap.";
+        if (msg.includes("how are you")) resp = "I'm running at 100% power!";
         return i.reply(`💬 **Wimble:** ${resp}`);
-    }
-
-    if (i.commandName === 'leaderboard') {
-        const sorted = Object.entries(db.cash).sort(([,a],[,b]) => b-a).slice(0, 10);
-        const list = sorted.map(([id, amt], idx) => `**#${idx+1}** <@${id}> — ${CURRENCY}${amt}`).join('\n');
-        const embed = new EmbedBuilder().setTitle("🏆 Wealthiest Members").setDescription(list || "The bank is empty!").setColor(BOT_COLOR);
-        return i.reply({ embeds: [embed] });
     }
 
     if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
     
-    if (i.commandName === 'daily') {
-        const last = db.daily[uid] || 0;
-        if (Date.now() - last < 86400000) return i.reply("❌ Come back tomorrow!");
-        db.cash[uid] += 1000; db.daily[uid] = Date.now();
-        return i.reply(`📆 **Daily Reward:** Received ${CURRENCY}1000!`);
-    }
-
-    if (i.commandName === 'ship') {
-        const score = Math.floor(Math.random() * 101);
-        return i.reply(`❤️ **Ship Meter:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is a **${score}%** match!`);
-    }
-
-    if (i.commandName === 'serverinfo') {
-        await ghostPing(i.channel, i.user);
-        const embed = new EmbedBuilder().setTitle(`🏢 ${i.guild.name}`).setThumbnail(i.guild.iconURL()).setColor(BOT_COLOR)
-            .addFields({ name: 'Members', value: `${i.guild.memberCount}`, inline: true });
-        return i.reply({ embeds: [embed] });
+    if (i.commandName === 'work') {
+        const gain = Math.floor(Math.random() * 150) + 50;
+        db.cash[uid] += gain;
+        return i.reply(`🔨 You worked hard and earned ${CURRENCY}${gain}!`);
     }
 
     if (i.commandName === 'spam' && uid === OWNER_ID) {
         const text = i.options.getString('t');
         const amt = i.options.getInteger('a') || 5;
-        i.reply({ content: "🚀", ephemeral: true });
+        await i.reply({ content: "🚀 Starting spam...", ephemeral: true });
         for (let x=0; x < Math.min(amt, 15); x++) { 
-            i.channel.send(text); 
+            await i.channel.send(text); 
             await new Promise(r => setTimeout(r, 500)); 
         }
-    }
-    
-    // Add logic for remaining rank/streak/work here...
-    if (i.commandName === 'work') {
-        const gain = Math.floor(Math.random() * 150) + 50;
-        db.cash[uid] += gain;
-        return i.reply(`🔨 You worked hard and earned ${CURRENCY}${gain}!`);
     }
 });
 
