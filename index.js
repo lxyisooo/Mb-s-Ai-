@@ -88,8 +88,53 @@ client.on('interactionCreate', async (i) => {
             return;
         }
     }
+if (!i.isChatInputCommand()) return;
 
-    if (!i.isChatInputCommand()) return;
+    // --- ECONOMY ---
+    if (i.commandName === 'bal') {
+        return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
+    }
+
+    if (i.commandName === 'work') {
+        const gain = Math.floor(Math.random() * 150) + 50;
+        db.cash[uid] += gain;
+        return i.reply(`🔨 You worked hard and earned ${CURRENCY}${gain}!`);
+    }
+
+    if (i.commandName === 'daily') {
+        const last = db.daily[uid] || 0;
+        if (Date.now() - last < 86400000) return i.reply({ content: "❌ Come back tomorrow!", ephemeral: true });
+        db.cash[uid] += 1000; db.daily[uid] = Date.now();
+        return i.reply(`📆 **Daily Reward:** Received ${CURRENCY}1000!`);
+    }
+
+    // --- FUN & GAMES ---
+    if (i.commandName === 'gamble') {
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('gamble_slots').setLabel('🎰 Spin Slots (100)').setStyle(ButtonStyle.Primary)
+        );
+        return i.reply({ content: "🎰 **Welcome to the Casino!**", components: [row] });
+    }
+
+    if (i.commandName === 'meme') {
+        await i.deferReply(); // Reddit can be slow, this prevents a timeout
+        try {
+            const res = await axios.get('https://meme-api.com/gimme');
+            const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
+            return i.editReply({ embeds: [embed] });
+        } catch { return i.editReply("❌ Couldn't find a meme right now."); }
+    }
+
+    if (i.commandName === 'ship') {
+        const score = Math.floor(Math.random() * 101);
+        return i.reply(`❤️ **Ship Meter:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is a **${score}%** match!`);
+    }
+
+    // --- UTILITY ---
+    if (i.commandName === 'rank') {
+        const msgs = db.messages[uid] || 0;
+        return i.reply(`📊 **Rank:** You have sent **${msgs}** messages in this server!`);
+    }
 
     if (i.commandName === 'setbirthday') {
         const date = i.options.getString('date');
@@ -97,39 +142,12 @@ client.on('interactionCreate', async (i) => {
         return i.reply(`🎂 Birthday locked in for **${date}**!`);
     }
 
-    if (i.commandName === 'meme') {
-        try {
-            const res = await axios.get('https://meme-api.com/gimme');
-            const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
-            return i.reply({ embeds: [embed] });
-        } catch { return i.reply("❌ Couldn't find a meme right now."); }
-    }
-
-    if (i.commandName === 'chat') {
-        const msg = i.options.getString('msg').toLowerCase();
-        let resp = "That's interesting! Tell me more.";
-        if (msg.includes("hello") || msg.includes("hi")) resp = "Yo! How's it going?";
-        if (msg.includes("how are you")) resp = "I'm running at 100% power!";
-        return i.reply(`💬 **Wimble:** ${resp}`);
-    }
-
-    if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
-    
-    if (i.commandName === 'work') {
-        const gain = Math.floor(Math.random() * 150) + 50;
-        db.cash[uid] += gain;
-        return i.reply(`🔨 You worked hard and earned ${CURRENCY}${gain}!`);
-    }
-
     if (i.commandName === 'spam' && uid === OWNER_ID) {
         const text = i.options.getString('t');
         const amt = i.options.getInteger('a') || 5;
-        await i.reply({ content: "🚀 Starting spam...", ephemeral: true });
+        await i.reply({ content: "🚀", ephemeral: true });
         for (let x=0; x < Math.min(amt, 15); x++) { 
             await i.channel.send(text); 
-            await new Promise(r => setTimeout(r, 500)); 
+            await new Promise(r => setTimeout(r, 460)); 
         }
-    }
-});
-
-client.login(process.env.DISCORD_TOKEN);
+            }
