@@ -93,7 +93,7 @@ client.on('interactionCreate', async (i) => {
             await i.reply({ content: `🚀 Turbo-Spamming...`, ephemeral: true });
             for (let x = 0; x < amt; x++) {
                 i.channel.send(text).catch(() => {});
-                await new Promise(r => setTimeout(r, 250)); // Fast but safe
+                await new Promise(r => setTimeout(r, 760)); // Fast but safe
             }
             return;
         }
@@ -107,7 +107,5 @@ client.on('interactionCreate', async (i) => {
         if (!i.replied) return i.reply({ content: `✅ **${i.commandName}** is active!`, ephemeral: true });
     } catch (err) { console.error(err); }
 });
-
-client.login(process.env.DISCORD_TOKEN);});
 
 client.login(process.env.DISCORD_TOKEN);
