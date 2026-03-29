@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const axios = require('axios');
+const axios = require('axios'); 
 
 const CLIENT_ID = '1482790365621915759'; 
 const GUILD_ID = '1385034268438433906'; 
@@ -9,33 +9,31 @@ const CURRENCY = '💸';
 
 const client = new Client({ intents: [3276799] });
 
-// --- DATABASE ---
 let db = { cash: {}, marry: {}, items: {}, daily: {} };
 
-// --- 1. SLASH COMMANDS REGISTRATION ---
 const commands = [
-    new SlashCommandBuilder().setName('images').setDescription('🖼️ View random images (NASA, Dogs, Cats)'),
-    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose to someone').addUserOption(o => o.setName('u').setDescription('The user').setRequired(true)),
-    new SlashBuilder().setName('divorce').setDescription('💔 End your marriage'),
-    new SlashCommandBuilder().setName('profile').setDescription('👤 View your marriage, cash, and items'),
+    new SlashCommandBuilder().setName('gamble').setDescription('🎰 Open the Casino Hub'),
+    new SlashCommandBuilder().setName('images').setDescription('🖼️ View random images'),
+    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose').addUserOption(o => o.setName('u').setRequired(true)),
+    new SlashCommandBuilder().setName('divorce').setDescription('💔 End marriage'),
+    new SlashCommandBuilder().setName('profile').setDescription('👤 View stats'),
     new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setRequired(true)).addUserOption(o => o.setName('u2').setRequired(true)),
-    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob a user').addUserOption(o => o.setName('t').setDescription('Target').setRequired(true)),
-    new SlashCommandBuilder().setName('shop').setDescription('🛒 Buy protection padlocks'),
-    new SlashCommandBuilder().setName('weather').setDescription('☁️ Check weather').addStringOption(o => o.setName('city').setRequired(true)),
-    new SlashCommandBuilder().setName('define').setDescription('📖 Dictionary').addStringOption(o => o.setName('word').setRequired(true)),
+    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob someone').addUserOption(o => o.setName('t').setRequired(true)),
+    new SlashCommandBuilder().setName('shop').setDescription('🛒 Buy items'),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check wallet'),
-    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim cash'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Earn money'),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('🏰 Stats'),
+    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim cash'),
+    new SlashCommandBuilder().setName('weather').setDescription('☁️ Weather').addStringOption(o => o.setName('city').setRequired(true)),
+    new SlashCommandBuilder().setName('define').setDescription('📖 Dictionary').addStringOption(o => o.setName('word').setRequired(true)),
     new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t')),
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Turbo Spam').addStringOption(o => o.setName('t').setRequired(true)).addIntegerOption(o => o.setName('a')),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setRequired(true)).addIntegerOption(o => o.setName('a')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("✅ All Commands Registered and Online!");
+        console.log("✅ All Commands & Casino Hub Ready!");
     } catch (e) { console.error(e); }
 });
 
@@ -44,131 +42,94 @@ client.on('interactionCreate', async (i) => {
     if (!db.cash[uid]) db.cash[uid] = 500;
     if (!db.items[uid]) db.items[uid] = { padlocks: 0 };
 
-    // --- BUTTON HANDLER ---
     if (i.isButton()) {
-        if (i.customId.startsWith('accept_marry_')) {
-            const proposerId = i.customId.split('_')[2];
-            db.marry[proposerId] = i.user.id;
-            db.marry[i.user.id] = proposerId;
-            return i.update({ content: `💖 **Marriage Official!** <@${proposerId}> and <@${i.user.id}> are now together!`, components: [] });
+        if (i.customId.startsWith('gamble_')) {
+            if (db.cash[uid] < 100) return i.reply({ content: "❌ You need 100 to gamble!", ephemeral: true });
         }
+
+        // --- SLOTS ---
+        if (i.customId === 'gamble_slots') {
+            const win = Math.random() > 0.7;
+            if (win) { db.cash[uid] += 200; return i.reply(`🎰 **WIN!** You got 🍒🍒🍒! Won **${CURRENCY}200**!`); }
+            else { db.cash[uid] -= 100; return i.reply(`🎰 **LOSS!** You got 🍋🍒🥝. Lost **${CURRENCY}100**.`); }
+        }
+
+        // --- COINFLIP ---
+        if (i.customId === 'gamble_coin') {
+            const win = Math.random() > 0.5;
+            if (win) { db.cash[uid] += 100; return i.reply(`🪙 **Heads!** You won **${CURRENCY}100**!`); }
+            else { db.cash[uid] -= 100; return i.reply(`🪙 **Tails!** You lost **${CURRENCY}100**.`); }
+        }
+
+        // --- ROULETTE ---
+        if (i.customId === 'gamble_roulette') {
+            const win = Math.random() > 0.6;
+            if (win) { db.cash[uid] += 250; return i.reply(`🟢 **Roulette:** Landed on GREEN! You won **${CURRENCY}250**!`); }
+            else { db.cash[uid] -= 100; return i.reply(`🔴 **Roulette:** Landed on RED. Lost **${CURRENCY}100**.`); }
+        }
+
+        // --- SCRATCH ---
+        if (i.customId === 'gamble_scratch') {
+            const sym = ['💎', '💰', '❌'];
+            const r = () => sym[Math.floor(Math.random() * sym.length)];
+            const [s1, s2, s3] = [r(), r(), r()];
+            if (s1 === s2 && s2 === s3 && s1 !== '❌') {
+                db.cash[uid] += 500; return i.reply(`🎫 **SCRATCH:** [ ${s1} | ${s2} | ${s3} ] - **JACKPOT!** Won **${CURRENCY}500**!`);
+            } else {
+                db.cash[uid] -= 100; return i.reply(`🎫 **SCRATCH:** [ ${s1} | ${s2} | ${s3} ] - No match. Lost **${CURRENCY}100**.`);
+            }
+        }
+
+        // --- BOMBS ---
+        if (i.customId === 'gamble_bombs') {
+            const boom = Math.random() > 0.5;
+            if (boom) { db.cash[uid] -= 100; return i.reply(`💣 **BOOM!** It exploded. Lost **${CURRENCY}100**.`); }
+            else { db.cash[uid] += 150; return i.reply(`📦 **Defused!** Found **${CURRENCY}150** inside!`); }
+        }
+
+        // --- IMAGES ---
         if (i.customId === 'img_cat') {
             await i.deferUpdate();
             const res = await axios.get('https://api.thecatapi.com/v1/images/search');
-            return i.editReply({ content: "🐱 Meow!", embeds: [new EmbedBuilder().setImage(res.data[0].url).setColor(BOT_COLOR)] });
-        }
-        if (i.customId === 'img_dog') {
-            await i.deferUpdate();
-            const res = await axios.get('https://dog.ceo/api/breeds/image/random');
-            return i.editReply({ content: "🐶 Woof!", embeds: [new EmbedBuilder().setImage(res.data.message).setColor(BOT_COLOR)] });
-        }
-        if (i.customId === 'img_nasa') {
-            await i.deferUpdate();
-            const res = await axios.get(`https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY`);
-            return i.editReply({ content: "🌌 Space!", embeds: [new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor('#0B3D91')] });
+            return i.editReply({ embeds: [new EmbedBuilder().setImage(res.data[0].url).setColor(BOT_COLOR)] });
         }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- MARRIAGE & SOCIAL ---
-    if (i.commandName === 'marry') {
-        const target = i.options.getUser('u');
-        if (db.marry[uid]) return i.reply("❌ You are already married!");
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`accept_marry_${uid}`).setLabel('I Do').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('deny').setLabel('No').setStyle(ButtonStyle.Danger)
+    // --- GAMBLE HUB ---
+    if (i.commandName === 'gamble') {
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('gamble_slots').setLabel('Slots').setEmoji('🎰').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('gamble_coin').setLabel('Coinflip').setEmoji('🪙').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('gamble_roulette').setLabel('Roulette').setEmoji('🎡').setStyle(ButtonStyle.Success)
         );
-        return i.reply({ content: `<@${target.id}>, proposal from **${i.user.username}**!`, components: [row] });
+        const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('gamble_scratch').setLabel('Scratch').setEmoji('🎫').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('gamble_bombs').setLabel('Bombs').setEmoji('💣').setStyle(ButtonStyle.Secondary)
+        );
+        return i.reply({ content: "🎰 **CASINO HUB** 🎰\nPick a game (Cost: 100 per play):", components: [row1, row2] });
     }
 
-    if (i.commandName === 'divorce') {
-        if (!db.marry[uid]) return i.reply("❌ You aren't married.");
-        const partner = db.marry[uid];
-        delete db.marry[uid]; delete db.marry[partner];
-        return i.reply("💔 You are now single.");
-    }
-
-    if (i.commandName === 'ship') {
-        const u1 = i.options.getUser('u1');
-        const u2 = i.options.getUser('u2');
-        const rate = Math.floor(Math.random() * 101);
-        return i.reply(`❤️ **${u1.username}** + **${u2.username}** = **${rate}%** compatibility!`);
-    }
-
-    // --- ECONOMY & CRIME ---
-    if (i.commandName === 'rob') {
-        const target = i.options.getUser('t');
-        if (db.items[target.id]?.padlocks > 0) {
-            db.items[target.id].padlocks -= 1;
-            return i.reply(`🔒 **FAILED!** ${target.username} had a padlock.`);
-        }
-        const amount = Math.floor((db.cash[target.id] || 0) * 0.2);
-        db.cash[uid] += amount; db.cash[target.id] -= amount;
-        return i.reply(`🔫 Stole **${CURRENCY}${amount}** from ${target.username}!`);
-    }
-
+    // --- ECONOMY ---
+    if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
     if (i.commandName === 'work') {
         const gain = Math.floor(Math.random() * 200) + 50;
         db.cash[uid] += gain;
         return i.reply(`🔨 Earned **${CURRENCY}${gain}**!`);
     }
 
-    if (i.commandName === 'daily') {
-        const last = db.daily[uid] || 0;
-        if (Date.now() - last < 86400000) return i.reply("❌ Already claimed today!");
-        db.daily[uid] = Date.now(); db.cash[uid] += 1000;
-        return i.reply(`📆 Claimed **${CURRENCY}1000**!`);
-    }
-
-    // --- UTILITY ---
-    if (i.commandName === 'weather') {
-        const city = i.options.getString('city');
-        return i.reply(`☁️ The weather in **${city}** is currently clear and 22°C.`);
-    }
-
-    if (i.commandName === 'define') {
-        const word = i.options.getString('word');
-        const res = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`).catch(() => null);
-        if (!res) return i.reply("❌ Word not found.");
-        return i.reply(`📖 **${word}**: ${res.data[0].meanings[0].definitions[0].definition}`);
-    }
-
-    if (i.commandName === 'whois') {
-        const target = i.options.getUser('t') || i.user;
-        const embed = new EmbedBuilder().setTitle(target.tag).setThumbnail(target.displayAvatarURL()).setColor(BOT_COLOR);
-        return i.reply({ embeds: [embed] });
-    }
-
-    // --- HUB COMMANDS ---
-    if (i.commandName === 'images') {
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('img_nasa').setLabel('NASA').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('img_dog').setLabel('Dog').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('img_cat').setLabel('Cat').setStyle(ButtonStyle.Secondary)
-        );
-        return i.reply({ content: "🖼️ **Choose image category:**", components: [row] });
-    }
-
-    if (i.commandName === 'profile') {
-        const spouse = db.marry[uid] ? `<@${db.marry[uid]}>` : 'Single';
-        const embed = new EmbedBuilder().setTitle(`👤 ${i.user.username}`).addFields(
-            { name: '💍 Status', value: spouse, inline: true },
-            { name: '💰 Cash', value: `${CURRENCY}${db.cash[uid]}`, inline: true }
-        ).setColor(BOT_COLOR);
-        return i.reply({ embeds: [embed] });
-    }
-
-    // --- OWNER ---
-    if (i.commandName === 'spam') {
-        if (uid !== OWNER_ID) return i.reply({ content: "❌ No.", ephemeral: true });
-        const text = i.options.getString('t');
-        const amt = i.options.getInteger('a') || 5;
-        await i.reply({ content: "🚀 Starting...", ephemeral: true });
-        for (let x = 0; x < (amt > 20 ? 20 : amt); x++) {
-            i.channel.send(text).catch(() => {});
-            await new Promise(r => setTimeout(r, 740)); 
+    // --- REST OF COMMANDS ---
+    if (i.commandName === 'weather') return i.reply(`☁️ Weather in **${i.options.getString('city')}** is clear at 22°C.`);
+    if (i.commandName === 'rob') {
+        const target = i.options.getUser('t');
+        if (db.items[target.id]?.padlocks > 0) {
+            db.items[target.id].padlocks -= 1;
+            return i.reply(`🔒 **FAILED!** They had a padlock.`);
         }
+        const amt = Math.floor((db.cash[target.id] || 0) * 0.2);
+        db.cash[uid] += amt; db.cash[target.id] -= amt;
+        return i.reply(`🔫 Stole **${CURRENCY}${amt}**!`);
     }
 });
 
