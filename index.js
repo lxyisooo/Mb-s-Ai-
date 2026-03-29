@@ -18,7 +18,7 @@ const commands = [
     new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 View server statistics and info'),
     new SlashCommandBuilder().setName('whois').setDescription('ℹ️ View detailed user information').addUserOption(o => o.setName('u').setDescription('The user to check').setRequired(true)),
     new SlashCommandBuilder().setName('images').setDescription('🖼️ Image Hub for NASA, Dogs, and Cats'),
-    new SlashCommandBuilder().setName('blast').setDescription('📢 [OWNER ONLY] Spam a message').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
+    new SlashCommandBuilder().setName('blast').setDescription('📢').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
     // THE NEW REPLY COMMAND
     new SlashCommandBuilder().setName('echo').setDescription('💬 This ').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check your current balance'),
