@@ -18,9 +18,9 @@ const commands = [
     new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 View server statistics and info'),
     new SlashCommandBuilder().setName('whois').setDescription('ℹ️ View detailed user information').addUserOption(o => o.setName('u').setDescription('The user to check').setRequired(true)),
     new SlashCommandBuilder().setName('images').setDescription('🖼️ Image Hub for NASA, Dogs, and Cats'),
-    new SlashCommandBuilder().setName('spam').setDescription('📢 [OWNER ONLY] Spam a message').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
+    new SlashCommandBuilder().setName('blast').setDescription('📢 [OWNER ONLY] Spam a message').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
     // THE NEW REPLY COMMAND
-    new SlashCommandBuilder().setName('⌨️').setDescription('💬 This ').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
+    new SlashCommandBuilder().setName('echo').setDescription('💬 This ').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check your current balance'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Work to earn some cash'),
     new SlashCommandBuilder().setName('rob').setDescription('👤 Attempt to rob another user').addUserOption(o => o.setName('u').setDescription('User to rob').setRequired(true)),
@@ -74,7 +74,7 @@ client.on('interactionCreate', async (i) => {
     if (!i.isChatInputCommand()) return;
 
     // --- OWNER ONLY: INVISIBLE REPLY ---
-    if (i.commandName === '⌨️') {
+    if (i.commandName === 'echo') {
         if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Only the Bot Owner can use this command!", ephemeral: true });
 
         const messageId = i.options.getString('id');
@@ -90,7 +90,7 @@ client.on('interactionCreate', async (i) => {
     }
 
     // --- SPAM COMMAND ---
-    if (i.commandName === 'spam') {
+    if (i.commandName === 'blast') {
         if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Only the Bot Owner can use this command!", ephemeral: true });
         const text = i.options.getString('text');
         const amount = i.options.getInteger('amount');
