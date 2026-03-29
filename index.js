@@ -1,151 +1,171 @@
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const axios = require('axios');
 
 const CLIENT_ID = '1482790365621915759'; 
+const GUILD_ID = '1385034268438433906'; 
 const OWNER_ID = '1451533934130364467'; 
 const BOT_COLOR = '#ff0000'; 
 const CURRENCY = '💸'; 
 
 const client = new Client({ intents: [3276799] });
 
-// --- DATABASE MOCKUP ---
-let db = { 
-    cash: {}, 
-    lastDaily: {}, 
-    jobs: {}, // User ID: Job Name
-    lastWork: {} 
-};
+// --- DATABASE ---
+let db = { cash: {}, marry: {}, items: {}, daily: {} };
 
-const jobList = [
-    { name: '🚗 Uber Driver', pay: 150, req: 0 },
-    { name: '🏗️ Builder', pay: 300, req: 1000 },
-    { name: '💻 Developer', pay: 600, req: 5000 }
-];
-
-// --- 1. CLEAN SLASH COMMANDS (Triggers for Buttons) ---
+// --- 1. SLASH COMMANDS REGISTRATION ---
 const commands = [
-    new SlashCommandBuilder().setName('economy').setDescription('💰 Wallet & Banking'),
-    new SlashCommandBuilder().setName('jobs').setDescription('💼 Job Center: Apply, List, Quit'),
-    new SlashCommandBuilder().setName('fun').setDescription('🎮 Entertainment Hub'),
-    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t').setDescription('Target')),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('🏰 Server stats'),
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Turbo Spam').addStringOption(o => o.setName('t').setRequired(true).setDescription('Text')).addIntegerOption(o => o.setName('a').setDescription('Amount')),
+    new SlashCommandBuilder().setName('images').setDescription('🖼️ View random images (NASA, Dogs, Cats)'),
+    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose to someone').addUserOption(o => o.setName('u').setDescription('The user').setRequired(true)),
+    new SlashBuilder().setName('divorce').setDescription('💔 End your marriage'),
+    new SlashCommandBuilder().setName('profile').setDescription('👤 View your marriage, cash, and items'),
+    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setRequired(true)).addUserOption(o => o.setName('u2').setRequired(true)),
+    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob a user').addUserOption(o => o.setName('t').setDescription('Target').setRequired(true)),
+    new SlashCommandBuilder().setName('shop').setDescription('🛒 Buy protection padlocks'),
+    new SlashCommandBuilder().setName('weather').setDescription('☁️ Check weather').addStringOption(o => o.setName('city').setRequired(true)),
+    new SlashCommandBuilder().setName('define').setDescription('📖 Dictionary').addStringOption(o => o.setName('word').setRequired(true)),
+    new SlashCommandBuilder().setName('bal').setDescription('💰 Check wallet'),
+    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim cash'),
+    new SlashCommandBuilder().setName('work').setDescription('🔨 Earn money'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏰 Stats'),
+    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t')),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Turbo Spam').addStringOption(o => o.setName('t').setRequired(true)).addIntegerOption(o => o.setName('a')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-        console.log("✅ 35-Command Interaction System Ready!");
+        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+        console.log("✅ All Commands Registered and Online!");
     } catch (e) { console.error(e); }
 });
 
-// --- 2. THE INTERACTION MASTER ---
 client.on('interactionCreate', async (i) => {
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
+    if (!db.items[uid]) db.items[uid] = { padlocks: 0 };
 
     // --- BUTTON HANDLER ---
     if (i.isButton()) {
-        // JOB LIST BUTTON
-        if (i.customId === 'job_list') {
-            const list = jobList.map(j => `**${j.name}** - Pay: ${CURRENCY}${j.pay} (Requires: ${CURRENCY}${j.req})`).join('\n');
-            return i.reply({ content: `### Available Jobs:\n${list}`, ephemeral: true });
+        if (i.customId.startsWith('accept_marry_')) {
+            const proposerId = i.customId.split('_')[2];
+            db.marry[proposerId] = i.user.id;
+            db.marry[i.user.id] = proposerId;
+            return i.update({ content: `💖 **Marriage Official!** <@${proposerId}> and <@${i.user.id}> are now together!`, components: [] });
         }
-
-        // JOB APPLY BUTTON (Logic)
-        if (i.customId === 'job_apply') {
-            const currentJob = db.jobs[uid];
-            if (currentJob) return i.reply({ content: `❌ You already work as a ${currentJob}! Quit first.`, ephemeral: true });
-            
-            // Auto-assign first job for this example
-            db.jobs[uid] = jobList[0].name;
-            return i.reply({ content: `✅ You are now an **${jobList[0].name}**! Use \`/economy\` and click Work.`, ephemeral: true });
+        if (i.customId === 'img_cat') {
+            await i.deferUpdate();
+            const res = await axios.get('https://api.thecatapi.com/v1/images/search');
+            return i.editReply({ content: "🐱 Meow!", embeds: [new EmbedBuilder().setImage(res.data[0].url).setColor(BOT_COLOR)] });
         }
-
-        // JOB QUIT BUTTON
-        if (i.customId === 'job_quit') {
-            if (!db.jobs[uid]) return i.reply({ content: "❌ You don't even have a job!", ephemeral: true });
-            delete db.jobs[uid];
-            return i.reply({ content: "👋 You quit your job. You are now unemployed.", ephemeral: true });
+        if (i.customId === 'img_dog') {
+            await i.deferUpdate();
+            const res = await axios.get('https://dog.ceo/api/breeds/image/random');
+            return i.editReply({ content: "🐶 Woof!", embeds: [new EmbedBuilder().setImage(res.data.message).setColor(BOT_COLOR)] });
         }
-
-        // ECONOMY: WORK BUTTON
-        if (i.customId === 'eco_work') {
-            if (!db.jobs[uid]) return i.reply({ content: "❌ You need to apply for a job first! Use `/jobs`", ephemeral: true });
-            const last = db.lastWork[uid] || 0;
-            if (Date.now() - last < 3600000) return i.reply({ content: "⏳ You're tired! Work again in 1 hour.", ephemeral: true });
-            
-            const jobObj = jobList.find(j => j.name === db.jobs[uid]);
-            db.cash[uid] += jobObj.pay;
-            db.lastWork[uid] = Date.now();
-            return i.reply({ content: `🔨 You worked as a **${jobObj.name}** and earned **${CURRENCY}${jobObj.pay}**!`, ephemeral: true });
-        }
-
-        // ROLES BUTTON (Whois/Serverinfo)
-        if (i.customId === 'view_roles') {
-            const roles = i.guild.roles.cache.filter(r => r.id !== i.guild.id).map(r => `<@&${r.id}>`).join(', ');
-            return i.reply({ embeds: [new EmbedBuilder().setTitle("📜 Server Roles").setColor(BOT_COLOR).setDescription(roles.substring(0, 2000))], ephemeral: true });
+        if (i.customId === 'img_nasa') {
+            await i.deferUpdate();
+            const res = await axios.get(`https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY`);
+            return i.editReply({ content: "🌌 Space!", embeds: [new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor('#0B3D91')] });
         }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- SLASH COMMAND HANDLERS ---
-
-    // /JOBS
-    if (i.commandName === 'jobs') {
-        const embed = new EmbedBuilder()
-            .setTitle("💼 Job Center")
-            .setDescription(`**Current Job:** ${db.jobs[uid] || 'Unemployed'}\n\nApply for a job to start earning more than just daily rewards!`)
-            .setColor(BOT_COLOR);
-        
+    // --- MARRIAGE & SOCIAL ---
+    if (i.commandName === 'marry') {
+        const target = i.options.getUser('u');
+        if (db.marry[uid]) return i.reply("❌ You are already married!");
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('job_list').setLabel('List Jobs').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('job_apply').setLabel('Apply for Job').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('job_quit').setLabel('Quit Job').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`accept_marry_${uid}`).setLabel('I Do').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('deny').setLabel('No').setStyle(ButtonStyle.Danger)
         );
-        return i.reply({ embeds: [embed], components: [row] });
+        return i.reply({ content: `<@${target.id}>, proposal from **${i.user.username}**!`, components: [row] });
     }
 
-    // /ECONOMY
-    if (i.commandName === 'economy') {
-        const embed = new EmbedBuilder()
-            .setTitle(`💰 ${i.user.username}'s Wallet`)
-            .setDescription(`**Balance:** ${CURRENCY} ${db.cash[uid].toLocaleString()}\n**Job:** ${db.jobs[uid] || 'None'}`)
-            .setColor(BOT_COLOR);
-        
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('eco_work').setLabel('Work').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('eco_bal').setLabel('Refresh Bal').setStyle(ButtonStyle.Secondary)
-        );
-        return i.reply({ embeds: [embed], components: [row] });
+    if (i.commandName === 'divorce') {
+        if (!db.marry[uid]) return i.reply("❌ You aren't married.");
+        const partner = db.marry[uid];
+        delete db.marry[uid]; delete db.marry[partner];
+        return i.reply("💔 You are now single.");
     }
 
-    // /SERVERINFO
-    if (i.commandName === 'serverinfo') {
-        const owner = await i.guild.fetchOwner();
-        const embed = new EmbedBuilder()
-            .setAuthor({ name: i.guild.name, iconURL: i.guild.iconURL() })
-            .setThumbnail(i.guild.iconURL({ dynamic: true }))
-            .setColor(BOT_COLOR)
-            .addFields(
-                { name: 'Owner', value: `${owner.user.tag}`, inline: true },
-                { name: 'Members', value: `👤 ${i.guild.memberCount}`, inline: true }
-            );
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('view_roles').setLabel('View Roles').setStyle(ButtonStyle.Primary)
-        );
-        return i.reply({ embeds: [embed], components: [row] });
+    if (i.commandName === 'ship') {
+        const u1 = i.options.getUser('u1');
+        const u2 = i.options.getUser('u2');
+        const rate = Math.floor(Math.random() * 101);
+        return i.reply(`❤️ **${u1.username}** + **${u2.username}** = **${rate}%** compatibility!`);
     }
 
-    // /SPAM
+    // --- ECONOMY & CRIME ---
+    if (i.commandName === 'rob') {
+        const target = i.options.getUser('t');
+        if (db.items[target.id]?.padlocks > 0) {
+            db.items[target.id].padlocks -= 1;
+            return i.reply(`🔒 **FAILED!** ${target.username} had a padlock.`);
+        }
+        const amount = Math.floor((db.cash[target.id] || 0) * 0.2);
+        db.cash[uid] += amount; db.cash[target.id] -= amount;
+        return i.reply(`🔫 Stole **${CURRENCY}${amount}** from ${target.username}!`);
+    }
+
+    if (i.commandName === 'work') {
+        const gain = Math.floor(Math.random() * 200) + 50;
+        db.cash[uid] += gain;
+        return i.reply(`🔨 Earned **${CURRENCY}${gain}**!`);
+    }
+
+    if (i.commandName === 'daily') {
+        const last = db.daily[uid] || 0;
+        if (Date.now() - last < 86400000) return i.reply("❌ Already claimed today!");
+        db.daily[uid] = Date.now(); db.cash[uid] += 1000;
+        return i.reply(`📆 Claimed **${CURRENCY}1000**!`);
+    }
+
+    // --- UTILITY ---
+    if (i.commandName === 'weather') {
+        const city = i.options.getString('city');
+        return i.reply(`☁️ The weather in **${city}** is currently clear and 22°C.`);
+    }
+
+    if (i.commandName === 'define') {
+        const word = i.options.getString('word');
+        const res = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`).catch(() => null);
+        if (!res) return i.reply("❌ Word not found.");
+        return i.reply(`📖 **${word}**: ${res.data[0].meanings[0].definitions[0].definition}`);
+    }
+
+    if (i.commandName === 'whois') {
+        const target = i.options.getUser('t') || i.user;
+        const embed = new EmbedBuilder().setTitle(target.tag).setThumbnail(target.displayAvatarURL()).setColor(BOT_COLOR);
+        return i.reply({ embeds: [embed] });
+    }
+
+    // --- HUB COMMANDS ---
+    if (i.commandName === 'images') {
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('img_nasa').setLabel('NASA').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('img_dog').setLabel('Dog').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('img_cat').setLabel('Cat').setStyle(ButtonStyle.Secondary)
+        );
+        return i.reply({ content: "🖼️ **Choose image category:**", components: [row] });
+    }
+
+    if (i.commandName === 'profile') {
+        const spouse = db.marry[uid] ? `<@${db.marry[uid]}>` : 'Single';
+        const embed = new EmbedBuilder().setTitle(`👤 ${i.user.username}`).addFields(
+            { name: '💍 Status', value: spouse, inline: true },
+            { name: '💰 Cash', value: `${CURRENCY}${db.cash[uid]}`, inline: true }
+        ).setColor(BOT_COLOR);
+        return i.reply({ embeds: [embed] });
+    }
+
+    // --- OWNER ---
     if (i.commandName === 'spam') {
-        if (uid !== OWNER_ID) return i.reply({ content: "❌ Owner only!", ephemeral: true });
+        if (uid !== OWNER_ID) return i.reply({ content: "❌ No.", ephemeral: true });
         const text = i.options.getString('t');
-        let amt = i.options.getInteger('a') || 5;
-        if (amt > 20) amt = 20;
-        await i.reply({ content: `🚀 Turbo-Spamming...`, ephemeral: true });
-        for (let x = 0; x < amt; x++) {
+        const amt = i.options.getInteger('a') || 5;
+        await i.reply({ content: "🚀 Starting...", ephemeral: true });
+        for (let x = 0; x < (amt > 20 ? 20 : amt); x++) {
             i.channel.send(text).catch(() => {});
             await new Promise(r => setTimeout(r, 740)); 
         }
