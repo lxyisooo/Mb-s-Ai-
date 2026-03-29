@@ -9,192 +9,157 @@ const CURRENCY = '💸';
 
 const client = new Client({ intents: [3276799] });
 
-// Database initialization
-let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, lastMsg: {} };
+// --- DATABASE (In-Memory) ---
+let db = { cash: {}, marry: {}, items: {}, daily: {}, messages: {}, streaks: {}, lastMsg: {}, bday: {} };
 
-// --- HELPER: GHOST PING ---
+// --- GHOST PING HELPER ---
 async function ghostPing(channel, user) {
     const msg = await channel.send(`${user}`);
     return msg.delete().catch(() => {}); 
 }
 
+// --- COMMAND DEFINITIONS (FIXED DESCRIPTIONS) ---
 const commands = [
-    new SlashCommandBuilder().setName('help').setDescription('📜 View all bot commands'),
+    new SlashCommandBuilder().setName('help').setDescription('📜 View all commands'),
+    new SlashCommandBuilder().setName('chat').setDescription('💬 Talk to Me').addStringOption(o => o.setName('msg').setDescription('Your message to the bot').setRequired(true)),
+    new SlashBuilder().setName('meme').setDescription('🤣 Get a random meme from Reddit'),
+    new SlashCommandBuilder().setName('setbirthday').setDescription('🎂 Set your birthday (DD/MM)').addStringOption(o => o.setName('date').setDescription('e.g. 27/02').setRequired(true)),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('🏆 See the top 10 richest members'),
+    new SlashCommandBuilder().setName('rank').setDescription('📊 Check your message count'),
+    new SlashCommandBuilder().setName('streak').setDescription('🔥 View your daily activity streak'),
+    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setDescription('First person').setRequired(true)).addUserOption(o => o.setName('u2').setDescription('Second person').setRequired(true)),
     new SlashCommandBuilder().setName('profile').setDescription('👤 View your profile card').addUserOption(o => o.setName('u').setDescription('User to view')),
-    new SlashCommandBuilder().setName('bal').setDescription('💰 Check wallet'),
-    new SlashCommandBuilder().setName('pay').setDescription('🤝 Give money').addUserOption(o => o.setName('u').setDescription('Recipient').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount').setRequired(true)),
-    new SlashCommandBuilder().setName('work').setDescription('🔨 Earn money'),
-    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim cash'),
-    new SlashCommandBuilder().setName('shop').setDescription('🛍️ Luxury Shopping Mall'),
-    new SlashCommandBuilder().setName('rob').setDescription('🔫 Rob someone').addUserOption(o => o.setName('t').setDescription('Target').setRequired(true)),
-    new SlashCommandBuilder().setName('gamble').setDescription('🎰 Casino Hub'),
-    new SlashCommandBuilder().setName('roulette').setDescription('🎡 Bet on colors').addStringOption(o => o.setName('color').setRequired(true).addChoices({name:'Red (2x)', value:'red'},{name:'Black (2x)', value:'black'},{name:'Green (14x)', value:'green'})).addIntegerOption(o => o.setName('amount').setRequired(true)),
-    new SlashCommandBuilder().setName('marry').setDescription('💍 Propose').addUserOption(o => o.setName('u').setDescription('Partner').setRequired(true)),
-    new SlashCommandBuilder().setName('divorce').setDescription('💔 End marriage'),
-    new SlashCommandBuilder().setName('ship').setDescription('❤️ Match maker').addUserOption(o => o.setName('u1').setRequired(true)).addUserOption(o => o.setName('u2').setRequired(true)),
-    new SlashCommandBuilder().setName('rank').setDescription('📊 View message stats'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('🏆 Top active members'),
-    new SlashCommandBuilder().setName('streak').setDescription('🔥 View daily activity streak'),
-    new SlashCommandBuilder().setName('whois').setDescription('🔍 User info').addUserOption(o => o.setName('t').setRequired(true)),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Server details'),
-    new SlashCommandBuilder().setName('images').setDescription('🖼️ Random images'),
-    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam').addStringOption(o => o.setName('t').setRequired(true)).addIntegerOption(o => o.setName('a')),
+    new SlashCommandBuilder().setName('shop').setDescription('🛍️ Visit the Luxury Mall'),
+    new SlashCommandBuilder().setName('gamble').setDescription('🎰 Enter the Casino Hub'),
+    new SlashCommandBuilder().setName('bal').setDescription('💰 Check your wallet balance'),
+    new SlashCommandBuilder().setName('work').setDescription('🔨 Earn some extra cash'),
+    new SlashCommandBuilder().setName('daily').setDescription('📆 Claim your daily 1k reward'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 Get server stats'),
+    new SlashCommandBuilder().setName('spam').setDescription('🚀 [OWNER] Spam a message').addStringOption(o => o.setName('t').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('a').setDescription('Amount of messages')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("✅ Wimble Ultimate is Online!");
+        console.log("🔥 WIMBLE OMEGA IS LIVE AND FIXED!");
     } catch (e) { console.error(e); }
 });
 
-// Message tracking for Rank/Streaks
+// --- MESSAGE TRACKING & BIRTHDAYS ---
 client.on('messageCreate', (m) => {
     if (m.author.bot) return;
     const uid = m.author.id;
-    db.cash[uid] = (db.cash[uid] || 500) + 5;
+    
+    // Track stats
     db.messages[uid] = (db.messages[uid] || 0) + 1;
-    const now = Date.now();
-    const diff = now - (db.lastMsg[uid] || 0);
-    if (diff > 86400000 && diff < 172800000) db.streaks[uid] = (db.streaks[uid] || 0) + 1;
-    else if (diff > 172800000) db.streaks[uid] = 1;
-    db.lastMsg[uid] = now;
+    db.cash[uid] = (db.cash[uid] || 500) + 2;
+
+    // Check Birthday
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+    if (db.bday[uid] === today && !db.streaks[`bday_${uid}`]) {
+        m.reply(`🎂 **HAPPY BIRTHDAY <@${uid}>!** Wimble gifted you ${CURRENCY}5000!`);
+        db.cash[uid] += 5000;
+        db.streaks[`bday_${uid}`] = true;
+    }
 });
 
 client.on('interactionCreate', async (i) => {
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
-    if (!db.items[uid]) db.items[uid] = { padlocks: 0, phones: 0, cars: 0, rolex: 0 };
+    if (!db.items[uid]) db.items[uid] = { padlocks: 0 };
 
+    // --- BUTTONS ---
     if (i.isButton()) {
-        // --- PAGINATION / SERVER INFO ---
-        if (i.customId === 'server_roles') {
-            const roles = i.guild.roles.cache.filter(r => r.name !== '@everyone').sort((a,b)=>b.position-a.position).map(r=>r.toString());
-            const embeds = [];
-            for (let x=0; x<roles.length; x+=20) {
-                if(embeds.length>=5) break;
-                embeds.push(new EmbedBuilder().setTitle(`🎭 Roles Page ${embeds.length+1}`).setColor(BOT_COLOR).setDescription(roles.slice(x, x+20).join(' ') || "None"));
-            }
-            return i.reply({ embeds, ephemeral: true });
-        }
-
-        // --- LUXURY SHOP BUYING ---
-        const prices = { padlock: 500, iphone: 12000, rolex: 45000, supercar: 250000 };
-        if (i.customId.startsWith('buy_')) {
-            const item = i.customId.replace('buy_', '');
-            if (db.cash[uid] < prices[item]) return i.reply({ content: "❌ Not enough money!", ephemeral: true });
-            db.cash[uid] -= prices[item];
-            if (item === 'padlock') db.items[uid].padlocks++;
-            if (item === 'iphone') db.items[uid].phones++;
-            if (item === 'rolex') db.items[uid].rolex++;
-            if (item === 'supercar') db.items[uid].cars++;
-            return i.reply(`🛍️ Bought a **${item.toUpperCase()}**!`);
-        }
-
-        // --- LIVE SLOTS ---
         if (i.customId === 'gamble_slots') {
-            if (db.cash[uid] < 100) return i.reply({ content: "❌ Need 100!", ephemeral: true });
+            if (db.cash[uid] < 100) return i.reply({ content: "❌ You need 100 to play!", ephemeral: true });
             db.cash[uid] -= 100;
-            const ems = ['💎', '🍒', '🌟', '🍎'];
-            await i.reply("🎰 **SPINNING...**\n[ 🔄 | 🔄 | 🔄 ]");
-            setTimeout(async () => {
-                const s = [ems[Math.floor(Math.random()*4)], ems[Math.floor(Math.random()*4)], ems[Math.floor(Math.random()*4)]];
-                let win = s[0]===s[1] && s[1]===s[2] ? 1500 : (s[0]===s[1] || s[1]===s[2] || s[0]===s[2] ? 200 : 0);
-                db.cash[uid] += win;
-                await i.editReply(`🎰 **SLOTS**\n[ ${s[0]} | ${s[1]} | ${s[2]} ]\n\n${win > 0 ? `✨ Won **${CURRENCY}${win}**!` : "💀 Lost."}`);
+            await i.reply("🎰 **SPINNING...**");
+            setTimeout(() => {
+                const ems = ['💎', '🍎', '⭐'];
+                const s = [ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)], ems[Math.floor(Math.random()*3)]];
+                const win = s[0] === s[1] && s[1] === s[2];
+                if (win) db.cash[uid] += 2000;
+                i.editReply(`🎰 [ ${s[0]} | ${s[1]} | ${s[2]} ]\n${win ? `✨ **JACKPOT!** Won ${CURRENCY}2000!` : '💀 Better luck next time.'}`);
             }, 1000);
             return;
         }
-
-        // --- MARRIAGE ACCEPT ---
-        if (i.customId.startsWith('accept_')) {
-            const ids = i.customId.split('_');
-            if (i.user.id !== ids[2]) return i.reply({ content: "Not for you!", ephemeral: true });
-            db.marry[ids[1]] = ids[2]; db.marry[ids[2]] = ids[1];
-            return i.update({ content: `🎉 <@${ids[1]}> and <@${ids[2]}> are now married! 💍`, components: [] });
+        if (i.customId === 'buy_padlock') {
+            if (db.cash[uid] < 500) return i.reply({ content: "❌ Not enough cash!", ephemeral: true });
+            db.cash[uid] -= 500; db.items[uid].padlocks++;
+            return i.reply(`🔒 Bought a **Padlock**! You now have ${db.items[uid].padlocks}.`);
         }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- COMMAND LOGIC ---
-    if (i.commandName === 'profile') {
-        const target = i.options.getUser('u') || i.user;
-        const spouse = db.marry[target.id] ? `<@${db.marry[target.id]}>` : "Single";
-        const inv = db.items[target.id] || { padlocks:0, phones:0, rolex:0, cars:0 };
-        const embed = new EmbedBuilder().setTitle(`👤 ${target.username}`).setColor(BOT_COLOR).setThumbnail(target.displayAvatarURL())
-            .addFields(
-                { name: '💰 Wallet', value: `${CURRENCY}${db.cash[target.id] || 0}`, inline: true },
-                { name: '💍 Partner', value: spouse, inline: true },
-                { name: '🎒 Items', value: `🔒 ${inv.padlocks} | 📱 ${inv.phones} | ⌚ ${inv.rolex} | 🏎️ ${inv.cars}` }
-            );
+    // --- LOGIC ---
+    if (i.commandName === 'setbirthday') {
+        const date = i.options.getString('date');
+        db.bday[uid] = date;
+        return i.reply(`🎂 Birthday locked in for **${date}**!`);
+    }
+
+    if (i.commandName === 'meme') {
+        try {
+            const res = await axios.get('https://meme-api.com/gimme');
+            const embed = new EmbedBuilder().setTitle(res.data.title).setImage(res.data.url).setColor(BOT_COLOR);
+            return i.reply({ embeds: [embed] });
+        } catch { return i.reply("❌ Couldn't find a meme right now."); }
+    }
+
+    if (i.commandName === 'chat') {
+        const msg = i.options.getString('msg').toLowerCase();
+        let resp = "That's interesting! Tell me more.";
+        if (msg.includes("hello") || msg.includes("hi")) resp = "Yo! How's it going?";
+        if (msg.includes("how are you")) resp = "I'm running at 100% power! Ready to help.";
+        if (msg.includes("owner")) resp = "My owner is the GOAT. No cap.";
+        return i.reply(`💬 **Wimble:** ${resp}`);
+    }
+
+    if (i.commandName === 'leaderboard') {
+        const sorted = Object.entries(db.cash).sort(([,a],[,b]) => b-a).slice(0, 10);
+        const list = sorted.map(([id, amt], idx) => `**#${idx+1}** <@${id}> — ${CURRENCY}${amt}`).join('\n');
+        const embed = new EmbedBuilder().setTitle("🏆 Wealthiest Members").setDescription(list || "The bank is empty!").setColor(BOT_COLOR);
         return i.reply({ embeds: [embed] });
     }
 
-    if (i.commandName === 'shop') {
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('buy_iphone').setLabel('iPhone (12k)').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('buy_rolex').setLabel('Rolex (45k)').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('buy_supercar').setLabel('Supercar (250k)').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('buy_padlock').setLabel('Padlock (500)').setStyle(ButtonStyle.Success)
-        );
-        return i.reply({ content: "🛍️ **Luxury Shop**", components: [row] });
+    if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
+    
+    if (i.commandName === 'daily') {
+        const last = db.daily[uid] || 0;
+        if (Date.now() - last < 86400000) return i.reply("❌ Come back tomorrow!");
+        db.cash[uid] += 1000; db.daily[uid] = Date.now();
+        return i.reply(`📆 **Daily Reward:** Received ${CURRENCY}1000!`);
+    }
+
+    if (i.commandName === 'ship') {
+        const score = Math.floor(Math.random() * 101);
+        return i.reply(`❤️ **Ship Meter:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is a **${score}%** match!`);
     }
 
     if (i.commandName === 'serverinfo') {
         await ghostPing(i.channel, i.user);
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('server_roles').setLabel('Roles').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('server_owner').setLabel('Owner').setStyle(ButtonStyle.Secondary)
-        );
-        const embed = new EmbedBuilder().setTitle(`🏢 ${i.guild.name}`).setThumbnail(i.guild.iconURL()).setColor(BOT_COLOR).addFields(
-            { name: '👥 Members', value: `${i.guild.memberCount}`, inline: true },
-            { name: '🎭 Roles', value: `${i.guild.roles.cache.size}`, inline: true }
-        );
-        return i.reply({ embeds: [embed], components: [row] });
-    }
-
-    if (i.commandName === 'roulette') {
-        const bet = i.options.getInteger('amount');
-        const color = i.options.getString('color');
-        if (bet > db.cash[uid] || bet <= 0) return i.reply("❌ Broke.");
-        await i.reply("🎡 Spinning...");
-        setTimeout(() => {
-            const res = Math.random() * 37;
-            let landed = res < 1 ? 'green' : (res < 19 ? 'red' : 'black');
-            if (color === landed) {
-                const multi = landed === 'green' ? 14 : 2;
-                db.cash[uid] += bet * (multi - 1);
-                i.editReply(`🎡 **${landed.toUpperCase()}!** Won **${CURRENCY}${bet * multi}**`);
-            } else {
-                db.cash[uid] -= bet;
-                i.editReply(`🎡 **${landed.toUpperCase()}**. Lost **${CURRENCY}${bet}**`);
-            }
-        }, 1500);
-    }
-
-    if (i.commandName === 'marry') {
-        const target = i.options.getUser('u');
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`accept_${uid}_${target.id}`).setLabel('Accept').setStyle(ButtonStyle.Success));
-        return i.reply({ content: `💍 ${target}, propose from ${i.user.username}?`, components: [row] });
-    }
-
-    if (i.commandName === 'bal') return i.reply(`💰 **Wallet:** ${CURRENCY}${db.cash[uid]}`);
-    if (i.commandName === 'work') {
-        const g = Math.floor(Math.random()*200)+50;
-        db.cash[uid]+=g; return i.reply(`🔨 Earned ${CURRENCY}${g}`);
-    }
-    if (i.commandName === 'ship') {
-        const love = Math.floor(Math.random() * 101);
-        return i.reply(`❤️ **Match:** ${i.options.getUser('u1')} x ${i.options.getUser('u2')} is **${love}%**!`);
+        const embed = new EmbedBuilder().setTitle(`🏢 ${i.guild.name}`).setThumbnail(i.guild.iconURL()).setColor(BOT_COLOR)
+            .addFields({ name: 'Members', value: `${i.guild.memberCount}`, inline: true });
+        return i.reply({ embeds: [embed] });
     }
 
     if (i.commandName === 'spam' && uid === OWNER_ID) {
-        const t = i.options.getString('t');
-        const a = Math.min(i.options.getInteger('a') || 5, 15);
-        i.reply({ content: "🚀 Running...", ephemeral: true });
-        for (let x=0; x<a; x++) { i.channel.send(t); await new Promise(r => setTimeout(r, 500)); }
+        const text = i.options.getString('t');
+        const amt = i.options.getInteger('a') || 5;
+        i.reply({ content: "🚀", ephemeral: true });
+        for (let x=0; x < Math.min(amt, 15); x++) { 
+            i.channel.send(text); 
+            await new Promise(r => setTimeout(r, 500)); 
+        }
+    }
+    
+    // Add logic for remaining rank/streak/work here...
+    if (i.commandName === 'work') {
+        const gain = Math.floor(Math.random() * 150) + 50;
+        db.cash[uid] += gain;
+        return i.reply(`🔨 You worked hard and earned ${CURRENCY}${gain}!`);
     }
 });
 
