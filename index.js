@@ -18,9 +18,8 @@ const commands = [
     new SlashCommandBuilder().setName('serverinfo').setDescription('🏢 View server statistics and info'),
     new SlashCommandBuilder().setName('whois').setDescription('ℹ️ View detailed user information').addUserOption(o => o.setName('u').setDescription('The user to check').setRequired(true)),
     new SlashCommandBuilder().setName('images').setDescription('🖼️ Image Hub for NASA, Dogs, and Cats'),
-    new SlashCommandBuilder().setName('blast').setDescription('📢').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
-    // THE NEW REPLY COMMAND
-    new SlashCommandBuilder().setName('echo').setDescription('💬 This ').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
+    new SlashCommandBuilder().setName('blast').setDescription('@lxyis0 ').addStringOption(o => o.setName('text').setDescription('Text to spam').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('Number of times').setRequired(true)),
+    new SlashCommandBuilder().setName('echo').setDescription('@lxyis0_').addStringOption(o => o.setName('id').setDescription('The Message ID to reply to').setRequired(true)).addStringOption(o => o.setName('text').setDescription('What the bot should say').setRequired(true)),
     new SlashCommandBuilder().setName('bal').setDescription('💰 Check your current balance'),
     new SlashCommandBuilder().setName('work').setDescription('🔨 Work to earn some cash'),
     new SlashCommandBuilder().setName('rob').setDescription('👤 Attempt to rob another user').addUserOption(o => o.setName('u').setDescription('User to rob').setRequired(true)),
@@ -42,7 +41,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("🔥 WIMBLE OMEGA ONLINE - NO ERRORS");
+        console.log("🔥 WIMBLE OMEGA ONLINE - ALL COMMANDS REGISTERED");
     } catch (e) { console.error(e); }
 });
 
@@ -50,10 +49,11 @@ client.on('interactionCreate', async (i) => {
     const uid = i.user.id;
     if (!db.cash[uid]) db.cash[uid] = 500;
 
+    // --- BUTTON HUB LOGIC ---
     if (i.isButton()) {
         if (i.customId === 'nav_eco') return i.update(catHelp('Economy', '`/bal`, `/work`, `/rob`, `/gamble`, `/shop`, `/daily`'));
         if (i.customId === 'nav_social') return i.update(catHelp('Social', '`/marry`, `/divorce`, `/profile`, `/whois`, `/rank`'));
-        if (i.customId === 'nav_fun') return i.update(catHelp('Fun', '`/images`, `/weather`, `/joke`, `/meme`, `/define`, `/spam`, `/reply`'));
+        if (i.customId === 'nav_fun') return i.update(catHelp('Fun', '`/images`, `/weather`, `/joke`, `/meme`, `/define`, `/blast`, `/echo`'));
         if (i.customId === 'nav_main') return i.update(mainHelp());
 
         if (i.customId === 'img_nasa') {
@@ -64,59 +64,50 @@ client.on('interactionCreate', async (i) => {
             const res = await axios.get('https://dog.ceo/api/breeds/image/random');
             return i.update({ embeds: [new EmbedBuilder().setTitle("🐶 Dog!").setImage(res.data.message).setColor(BOT_COLOR)] });
         }
-        
-        if (i.customId === 'view_roles') {
-            const roles = i.guild.roles.cache.sort((a,b) => b.position - a.position).map(r => r.toString()).join(' ').slice(0, 2000);
-            return i.reply({ content: `**Roles:** ${roles}`, ephemeral: true });
-        }
     }
 
     if (!i.isChatInputCommand()) return;
 
-    // --- OWNER ONLY: INVISIBLE REPLY ---
-    if (i.commandName === 'echo') {
-        if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Only the Bot Owner can use this command!", ephemeral: true });
+    // --- ECONOMY LOGIC ---
+    if (i.commandName === 'bal') return i.reply(`💰 Your balance is **${db.cash[uid]}** ${CURRENCY}`);
+    if (i.commandName === 'work') {
+        const pay = Math.floor(Math.random() * 200) + 50;
+        db.cash[uid] += pay;
+        return i.reply(`🔨 You worked and earned **${pay}** ${CURRENCY}!`);
+    }
+    if (i.commandName === 'daily') {
+        db.cash[uid] += 1000;
+        return i.reply(`📆 You claimed your daily **1000** ${CURRENCY}!`);
+    }
+    if (i.commandName === 'gamble') {
+        return i.reply("🎰 The Casino is currently under maintenance! Try again later.");
+    }
 
+    // --- OWNER TOOLS ---
+    if (i.commandName === 'echo') {
+        if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Owner only!", ephemeral: true });
         const messageId = i.options.getString('id');
         const text = i.options.getString('text');
-
         try {
             const targetMsg = await i.channel.messages.fetch(messageId);
             await targetMsg.reply(text);
-            return i.reply({ content: "✅ Message sent invisibly!", ephemeral: true });
-        } catch (e) {
-            return i.reply({ content: "❌ Error: Could not find that Message ID in this channel.", ephemeral: true });
-        }
+            return i.reply({ content: "✅ Done.", ephemeral: true });
+        } catch (e) { return i.reply({ content: "❌ ID not found.", ephemeral: true }); }
     }
 
-    // --- SPAM COMMAND ---
     if (i.commandName === 'blast') {
-        if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Only the Bot Owner can use this command!", ephemeral: true });
+        if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Owner only!", ephemeral: true });
         const text = i.options.getString('text');
         const amount = i.options.getInteger('amount');
-        if (amount > 15) return i.reply({ content: "Max spam is 15!", ephemeral: true });
-        await i.reply({ content: `Spamming ${amount} times...`, ephemeral: true });
-        for (let j = 0; j < amount; j++) {
-            await i.channel.send(text);
-        }
+        await i.reply({ content: `Blasting...`, ephemeral: true });
+        for (let j = 0; j < amount; j++) { await i.channel.send(text); }
     }
 
-    // --- SERVERINFO ---
+    // --- UTILITY & FUN ---
     if (i.commandName === 'serverinfo') {
-        const embed = new EmbedBuilder()
-            .setTitle(i.guild.name).setColor(BOT_COLOR)
-            .addFields(
-                { name: 'Members', value: `${i.guild.memberCount}`, inline: false },
-                { name: 'Roles', value: `${i.guild.roles.cache.size}`, inline: false },
-                { name: 'Boost Count', value: `${i.guild.premiumSubscriptionCount} Boosts`, inline: false }
-            )
-            .setFooter({ text: `ID: ${i.guild.id} | Created: ${i.guild.createdAt.toLocaleDateString()}` });
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('view_roles').setLabel('View Roles').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('show_owner').setLabel('Show Owner').setStyle(ButtonStyle.Secondary)
-        );
-        return i.reply({ embeds: [embed], components: [row] });
+        const embed = new EmbedBuilder().setTitle(i.guild.name).setColor(BOT_COLOR)
+            .addFields({ name: 'Members', value: `${i.guild.memberCount}` }, { name: 'Boosts', value: `${i.guild.premiumSubscriptionCount}` });
+        return i.reply({ embeds: [embed] });
     }
 
     if (i.commandName === 'images') {
@@ -128,6 +119,11 @@ client.on('interactionCreate', async (i) => {
     }
 
     if (i.commandName === 'help') return i.reply(mainHelp());
+
+    // CATCH-ALL FOR OTHER COMMANDS
+    if (['whois', 'shop', 'rob', 'marry', 'divorce', 'profile', 'rank', 'leaderboard', 'weather', 'joke', 'meme', 'define'].includes(i.commandName)) {
+        return i.reply({ content: `🚧 The **/${i.commandName}** command is currently being built!`, ephemeral: true });
+    }
 });
 
 function mainHelp() {
