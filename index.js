@@ -17,9 +17,9 @@ const client = new Client({
 const genAI = new GoogleGenerativeAI(process.env.AIzaSyCWx_FvtSqMteJhVtFslPXiAPs6FiRIK2c);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-const OWNER_ID = 'YOUR_USER_ID'; 
+const OWNER_ID = '1451533934130364467'; 
 const CLIENT_ID = 'YOUR_CLIENT_ID';
-const GUILD_ID = 'YOUR_SERVER_ID';
+const GUILD_ID = '1385034268438433906';
 
 // --- COMMAND DEFINITIONS ---
 const commands = [
