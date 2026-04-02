@@ -1,147 +1,112 @@
-const { 
-    Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, 
-    ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder 
-} = require('discord.js');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent 
-    ] 
-});
-
+// --- CONFIG ---
+const MY_ID = "1451533934130364467"; // <--- PASTE YOUR ID HERE (e.g., "1234567890")
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-const OWNER_ID = '1451533934130364467'; 
-const CLIENT_ID = '1482790365621915759';
-const GUILD_ID = '1385034268438433906';
+let botPersonality = "You are a chill, helpful AI. Keep it brief and friendly.";
 
-// --- FIXED COMMAND DEFINITIONS ---
-const commands = [
-    new SlashCommandBuilder().setName('help').setDescription('Show all commands'),
-    new SlashCommandBuilder().setName('server').setDescription('Server info'),
-    new SlashCommandBuilder().setName('whois').setDescription('User info').addUserOption(o => o.setName('target').setDescription('The user').setRequired(true)),
-    new SlashCommandBuilder().setName('images').setDescription('Get random images via buttons'),
-    new SlashCommandBuilder().setName('s').setDescription('@lxyis0').addStringOption(o => o.setName('text').setDescription('What to say').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('How many times').setRequired(true)),
-    new SlashCommandBuilder().setName('r').setDescription('@lxyis0').addStringOption(o => o.setName('id').setDescription('Message ID').setRequired(true)).addStringOption(o => o.setName('text').setDescription('Reply text').setRequired(true)),
-    new SlashCommandBuilder().setName('ping').setDescription('Check latency'),
-    new SlashCommandBuilder().setName('8ball').setDescription('Ask a question').addStringOption(o => o.setName('q').setDescription('Your question').setRequired(true)),
-    new SlashCommandBuilder().setName('coinflip').setDescription('Flip a coin'),
-    new SlashCommandBuilder().setName('roll').setDescription('Roll a dice'),
-    new SlashCommandBuilder().setName('joke').setDescription('Get a dad joke'),
-    new SlashCommandBuilder().setName('rate').setDescription('Rate something').addStringOption(o => o.setName('thing').setDescription('What to rate').setRequired(true)),
-    new SlashCommandBuilder().setName('kill').setDescription('Eliminate someone').addUserOption(o => o.setName('t').setDescription('The target').setRequired(true)),
-    new SlashCommandBuilder().setName('hug').setDescription('Hug someone').addUserOption(o => o.setName('t').setDescription('Who to hug').setRequired(true)),
-    new SlashCommandBuilder().setName('ppsize').setDescription('Funny size check'),
-    new SlashCommandBuilder().setName('calculate').setDescription('Math').addNumberOption(o => o.setName('n1').setDescription('Num 1').setRequired(true)).addStringOption(o => o.setName('op').setDescription('Op').setRequired(true).addChoices({name:'+',value:'+'},{name:'-',value:'-'},{name:'*',value:'*'},{name:'/',value:'/'})).addNumberOption(o => o.setName('n2').setDescription('Num 2').setRequired(true)),
-    new SlashCommandBuilder().setName('avatar').setDescription('Get avatar').addUserOption(o => o.setName('t').setDescription('The user')),
-    new SlashCommandBuilder().setName('uptime').setDescription('Bot online time'),
-    new SlashCommandBuilder().setName('clear').setDescription('Delete messages').addIntegerOption(o => o.setName('a').setDescription('Amount').setRequired(true))
-].map(c => c.toJSON());
-
-// --- REGISTER COMMANDS ---
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN || ""); // Added fallback to prevent crash if token is missing
-(async () => {
-    try {
-        // FIXED: Changed applicationCommandsGuild to applicationGuildCommands
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('Commands Synchronized!');
-    } catch (e) { console.error(e); }
-})();
-
-// --- AI RESPONSE ---
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.mentions.has(client.user) || message.mentions.everyone) return;
-    await message.channel.sendTyping();
-    try {
-        const prompt = message.content.replace(`<@${client.user.id}>`, "").trim() || "Hello!";
-        const result = await model.generateContent(`You are a witty, helpful Discord bot. Short replies. User says: ${prompt}`);
-        return message.reply(result.response.text());
-    } catch (e) { return message.reply("K"); }
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-// --- INTERACTION HANDLER ---
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    const { commandName, options, user, channel } = interaction;
+// --- 1. REGISTER SLASH COMMANDS ---
+const commands = [
+    new SlashCommandBuilder()
+        .setName('spam')
+        .setDescription('Spam a message (Owner Only)')
+        .addIntegerOption(opt => opt.setName('amount').setDescription('How many times').setRequired(true))
+        .addStringOption(opt => opt.setName('text').setDescription('What to say').setRequired(true)),
+    
+    new SlashCommandBuilder()
+        .setName('reply')
+        .setDescription('Make the bot repeat something (Owner Only)')
+        .addStringOption(opt => opt.setName('text').setDescription('The message').setRequired(true)),
 
-    switch (commandName) {
-        case 'ping':
-            return interaction.reply(`🏓 Latency: ${client.ws.ping}ms`);
-        
-        case 'coinflip':
-            return interaction.reply(`🪙 It's **${Math.random() > 0.5 ? 'Heads' : 'Tails'}**!`);
+    new SlashCommandBuilder()
+        .setName('reset')
+        .setDescription('Restart the bot process (Owner Only)'),
 
-        case 'roll':
-            return interaction.reply(`🎲 You rolled a **${Math.floor(Math.random() * 6) + 1}**!`);
+    new SlashCommandBuilder()
+        .setName('editpersonality')
+        .setDescription('Change how the AI talks')
+        .addStringOption(opt => opt.setName('style').setDescription('New personality description').setRequired(true)),
+].map(command => command.toJSON());
 
-        case '8ball':
-            const answers = ["Yes", "No", "Maybe", "Ask again later", "Definitely", "Better not tell you now"];
-            return interaction.reply(`🔮 ${answers[Math.floor(Math.random() * answers.length)]}`);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-        case 'ppsize':
-            return interaction.reply(`📏 8${"=".repeat(Math.floor(Math.random() * 15))}D`);
-
-        case 'calculate':
-            const n1 = options.getNumber('n1'), n2 = options.getNumber('n2'), op = options.getString('op');
-            let res = op === '+' ? n1 + n2 : op === '-' ? n1 - n2 : op === '*' ? n1 * n2 : n1 / n2;
-            return interaction.reply(`🔢 Result: **${res}**`);
-
-        case 'avatar':
-            const target = options.getUser('t') || user;
-            return interaction.reply(target.displayAvatarURL({ dynamic: true, size: 1024 }));
-
-        case 'uptime':
-            let totalSeconds = (client.uptime / 1000);
-            let days = Math.floor(totalSeconds / 86400), hours = Math.floor(totalSeconds / 3600) % 24, minutes = Math.floor(totalSeconds / 60) % 60;
-            return interaction.reply(`⏳ Online for: **${days}d ${hours}h ${minutes}m**`);
-
-        case 'clear':
-            if (!interaction.member.permissions.has('ManageMessages')) return interaction.reply({ content: "No perms.", ephemeral: true });
-            const amount = options.getInteger('a');
-            await channel.bulkDelete(Math.min(amount, 100), true);
-            return interaction.reply({ content: `Cleaned ${amount} messages.`, ephemeral: true });
-
-        case 'kill':
-            return interaction.reply(`💀 ${user} absolutely destroyed ${options.getUser('t')}!`);
-
-        case 'hug':
-            return interaction.reply(`🫂 ${user} gave ${options.getUser('t')} a big hug!`);
-
-        case 's':
-            if (user.id !== OWNER_ID) return interaction.reply({ content: "❌ No.", ephemeral: true });
-            await interaction.reply({ content: `Spamming...`, ephemeral: true });
-            for(let i=0; i < options.getInteger('amount'); i++) { await channel.send(options.getString('text')); }
-            break;
-
-        case 'images':
-            const iRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('img_nasa').setLabel('NASA').setButtonStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('img_dog').setLabel('Dog').setButtonStyle(ButtonStyle.Success)
-            );
-            return interaction.reply({ content: 'Select image:', components: [iRow] });
-
-        case 'help':
-            const embed = new EmbedBuilder()
-                .setTitle("Bot Commands")
-                .setDescription("/ping, /8ball, /roll, /coinflip, /calculate, /avatar, /clear, /ppsize, /kill, /hug")
-                .setColor(0x0099FF);
-            return interaction.reply({ embeds: [embed] });
-
-        default:
-            return interaction.reply({ content: "Work in progress!", ephemeral: true });
+client.once('ready', async () => {
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log(`✅ ${client.user.tag} is online! Only ID ${MY_ID} can use admin commands.`);
+    } catch (err) {
+        console.error("Slash Command Error:", err);
     }
 });
 
-// --- BUTTON HANDLER ---
+// --- 2. HANDLE SLASH COMMANDS ---
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isButton()) return;
-    const responses = { 'img_nasa': '🚀 Space!', 'img_dog': '🐶 Woof!' };
-    return interaction.reply({ content: responses[interaction.customId] || "Clicked!", ephemeral: true });
+    if (!interaction.isChatInputCommand()) return;
+
+    // --- OWNER ONLY CHECK ---
+    const adminCommands = ['spam', 'reply', 'reset'];
+    if (adminCommands.includes(interaction.commandName) && interaction.user.id !== MY_ID) {
+        return interaction.reply({ content: "❌ You aren't my developer. You can't use this.", ephemeral: true });
+    }
+
+    if (interaction.commandName === 'spam') {
+        const amount = Math.min(interaction.options.getInteger('amount'), 50);
+        const text = interaction.options.getString('text');
+        await interaction.reply({ content: `Spamming ${amount} times...`, ephemeral: true });
+        for (let i = 0; i < amount; i++) {
+            await interaction.channel.send(text);
+        }
+    }
+
+    if (interaction.commandName === 'reply') {
+        const text = interaction.options.getString('text');
+        await interaction.reply({ content: "Message sent.", ephemeral: true });
+        interaction.channel.send(text);
+    }
+
+    if (interaction.commandName === 'reset') {
+        await interaction.reply("🔄 System reboot initiated...");
+        process.exit(0);
+    }
+
+    if (interaction.commandName === 'editpersonality') {
+        // I kept this open so anyone can change his mood, 
+        // but if you want this private too, just add it to the adminCommands list above.
+        botPersonality = interaction.options.getString('style');
+        await interaction.reply(`✅ AI Personality updated.`);
+    }
+});
+
+// --- 3. HANDLE AI CHAT ---
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+
+    if (message.mentions.has(client.user) || !message.guild) {
+        try {
+            await message.channel.sendTyping();
+            const prompt = message.content.replace(/<@!?\d+>/g, '').trim();
+            if (!prompt) return message.reply("Yo! Did you need something?");
+
+            const result = await model.generateContent(`System: ${botPersonality}\nUser: ${prompt}`);
+            const response = await result.response;
+            await message.reply(response.text());
+        } catch (err) {
+            console.error(err);
+            message.reply("⚠️ My brain's a bit fried. Use `/reset` if I stay quiet.");
+        }
+    }
 });
 
 client.login(process.env.TOKEN);
