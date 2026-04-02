@@ -1,12 +1,13 @@
 {
   "name": "wimble-bot",
-  "version": "2.0.0",
+  "version": "1.1.0",
+  "description": "Multi-utility and fun bot with buttons",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.13.0",
-    "axios": "^1.6.0"
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
   }
 }
