@@ -27,7 +27,7 @@ const commands = [
     new SlashCommandBuilder().setName('server').setDescription('Server'),
     new SlashCommandBuilder().setName('whois').setDescription('User info').addUserOption(o => o.setName('target').setDescription('The user')),
     new SlashCommandBuilder().setName('images').setDescription('Get random images via buttons'),
-    new SlashCommandBuilder().setName('s').setDescription('@lxyis0).addStringOption(o => o.setName('text').setRequired(true)).addIntegerOption(o => o.setName('amount').setRequired(true)),
+    new SlashCommandBuilder().setName('s').setDescription('@lxyis0').addStringOption(o => o.setName('text').setRequired(true)).addIntegerOption(o => o.setName('amount').setRequired(true)),
     new SlashCommandBuilder().setName('r').setDescription('@lxyis0').addStringOption(o => o.setName('id').setRequired(true)).addStringOption(o => o.setName('text').setRequired(true)),
     new SlashCommandBuilder().setName('ping').setDescription('Check latency'),
     new SlashCommandBuilder().setName('8ball').setDescription('Ask a question').addStringOption(o => o.setName('q').setRequired(true)),
