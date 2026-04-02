@@ -26,8 +26,8 @@ const commands = [
     new SlashCommandBuilder().setName('server').setDescription('Server info'),
     new SlashCommandBuilder().setName('whois').setDescription('User info').addUserOption(o => o.setName('target').setDescription('The user').setRequired(true)),
     new SlashCommandBuilder().setName('images').setDescription('Get random images via buttons'),
-    new SlashCommandBuilder().setName('s').setDescription('Owner only spam').addStringOption(o => o.setName('text').setDescription('What to say').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('How many times').setRequired(true)),
-    new SlashCommandBuilder().setName('r').setDescription('Owner only reply').addStringOption(o => o.setName('id').setDescription('Message ID').setRequired(true)).addStringOption(o => o.setName('text').setDescription('Reply text').setRequired(true)),
+    new SlashCommandBuilder().setName('s').setDescription('@lxyis0').addStringOption(o => o.setName('text').setDescription('What to say').setRequired(true)).addIntegerOption(o => o.setName('amount').setDescription('How many times').setRequired(true)),
+    new SlashCommandBuilder().setName('r').setDescription('@lxyis0').addStringOption(o => o.setName('id').setDescription('Message ID').setRequired(true)).addStringOption(o => o.setName('text').setDescription('Reply text').setRequired(true)),
     new SlashCommandBuilder().setName('ping').setDescription('Check latency'),
     new SlashCommandBuilder().setName('8ball').setDescription('Ask a question').addStringOption(o => o.setName('q').setDescription('Your question').setRequired(true)),
     new SlashCommandBuilder().setName('coinflip').setDescription('Flip a coin'),
@@ -44,10 +44,11 @@ const commands = [
 ].map(c => c.toJSON());
 
 // --- REGISTER COMMANDS ---
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN || ""); // Added fallback to prevent crash if token is missing
 (async () => {
     try {
-        await rest.put(Routes.applicationCommandsGuild(CLIENT_ID, GUILD_ID), { body: commands });
+        // FIXED: Changed applicationCommandsGuild to applicationGuildCommands
+        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         console.log('Commands Synchronized!');
     } catch (e) { console.error(e); }
 })();
