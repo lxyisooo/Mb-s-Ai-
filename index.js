@@ -14,7 +14,7 @@ const client = new Client({
 });
 
 // Setup Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.AIzaSyCWx_FvtSqMteJhVtFslPXiAPs6FiRIK2c);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const OWNER_ID = '1451533934130364467'; 
