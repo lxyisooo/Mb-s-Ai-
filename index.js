@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // --- CONFIG ---
-const MY_ID = "1451533934130364467"; // <--- CHANGE THIS TO YOUR ACTUAL ID
+const MY_ID = "1451533934130364467"; // ✅ Your ID is now locked in
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -21,40 +21,36 @@ const client = new Client({
 // --- 1. REGISTER SLASH COMMANDS ---
 const commands = [
     new SlashCommandBuilder()
-        .setName('s')
-        .setDescription('lxyis0')
+        .setName('spam')
+        .setDescription('Secretly spam a message')
         .addIntegerOption(opt => opt.setName('amount').setDescription('How many times').setRequired(true))
         .addStringOption(opt => opt.setName('text').setDescription('What to say').setRequired(true)),
     
     new SlashCommandBuilder()
-        .setName('') // Renamed from 'reply' to 'control' for clarity
-        .setDescription('lxyis0')
-        .addStringOption(opt => opt.setName('channelid').setDescription('The ID of the channel').setRequired(true))
-        .addStringOption(opt => opt.setName('message').setDescription('The message content').setRequired(true)),
+        .setName('control')
+        .setDescription('Secretly make the bot send a message')
+        .addStringOption(opt => opt.setName('channelid').setDescription('Target Channel ID').setRequired(true))
+        .addStringOption(opt => opt.setName('message').setDescription('Content').setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('reset')
-        .setDescription('Owner Only: Restart the bot'),
+        .setDescription('Restart the bot'),
 
     new SlashCommandBuilder()
         .setName('editpersonality')
-        .setDescription('Change how the AI talks')
-        .addStringOption(opt => opt.setName('style').setDescription('New personality description').setRequired(true)),
+        .setDescription('Change AI tone')
+        .addStringOption(opt => opt.setName('style').setDescription('New style').setRequired(true)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 client.once('ready', async () => {
     try {
-        console.log("🧹 Purging old commands...");
         await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-        
-        console.log("🚀 Registering updated commands...");
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        
-        console.log(`✅ ${client.user.tag} is online!`);
+        console.log(`✅ ${client.user.tag} is online and secretive!`);
     } catch (err) {
-        console.error("Setup Error:", err);
+        console.error("Sync Error:", err);
     }
 });
 
@@ -62,30 +58,33 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    // Admin Security
-    const adminOnly = ['s', 'c', 'reset'];
+    // Security Check
+    const adminOnly = ['spam', 'control', 'reset'];
     if (adminOnly.includes(interaction.commandName) && interaction.user.id !== MY_ID) {
-        return interaction.reply({ content: "❌ Not authorized.", flags: [64] });
+        return interaction.reply({ content: "⚠️ Command not found.", flags: [64] });
     }
 
-    if (interaction.commandName === 's') {
+    if (interaction.commandName === 'spam') {
         const amount = Math.min(interaction.options.getInteger('amount'), 50);
         const text = interaction.options.getString('text');
-        await interaction.reply({ content: `Spamming...`, flags: [64] });
+        
+        // Ephemeral reply so only YOU see the bot acknowledged it
+        await interaction.reply({ content: "🤫 Stealth spam initiated...", flags: [64] });
+        
         for (let i = 0; i < amount; i++) {
             await interaction.channel.send(text);
         }
     }
 
-    if (interaction.commandName === 'c') {
-        const channelId = interaction.options.getString('channelid');
+    if (interaction.commandName === 'control') {
+        const chanId = interaction.options.getString('channelid');
         const content = interaction.options.getString('message');
         try {
-            const targetChannel = await client.channels.fetch(channelId);
-            await targetChannel.send(content);
-            await interaction.reply({ content: `✅ Message sent to <#${channelId}>`, flags: [64] });
+            const target = await client.channels.fetch(chanId);
+            await target.send(content);
+            await interaction.reply({ content: "✅ Secret message sent.", flags: [64] });
         } catch (e) {
-            await interaction.reply({ content: `❌ Error: Could not find that channel.`, flags: [64] });
+            await interaction.reply({ content: "❌ Error: Invalid ID.", flags: [64] });
         }
     }
 
@@ -96,7 +95,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.commandName === 'editpersonality') {
         botPersonality = interaction.options.getString('style');
-        await interaction.reply({ content: `✅ Personality set.`, flags: [64] });
+        await interaction.reply({ content: "✅ Personality updated.", flags: [64] });
     }
 });
 
@@ -104,19 +103,17 @@ client.on('interactionCreate', async interaction => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Check for Mention or DM
     if (message.mentions.has(client.user) || !message.guild) {
         try {
             await message.channel.sendTyping();
             const prompt = message.content.replace(/<@!?\d+>/g, '').trim();
-            if (!prompt) return message.reply("Yo!");
+            if (!prompt) return;
 
             const result = await model.generateContent(`System: ${botPersonality}\nUser: ${prompt}`);
             const response = await result.response;
             await message.reply(response.text());
         } catch (err) {
-            console.error("Gemini Error:", err);
-            message.reply("⚠️ error, COULD not RESPOND to U.");
+            console.error("AI Error:", err);
         }
     }
 });
