@@ -106,7 +106,7 @@ client.once("ready", async () => {
   console.log(`💀 ${client.user.tag} ONLINE`);
 
   client.user.setPresence({
-    activities: [{ name: "Cod b07", type: ActivityType.Playing }],
+    activities: [{ name: "MB's Videos ", type: ActivityType.Watching }],
     status: "idle"
   });
 
