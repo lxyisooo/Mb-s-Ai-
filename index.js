@@ -107,7 +107,7 @@ client.once("ready", async () => {
 
   client.user.setPresence({
     activities: [{ name: "Cod b07", type: ActivityType.playing }],
-    status: "mobile"
+    status: "do not disturb"
   });
 
   const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
