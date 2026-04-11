@@ -1,121 +1,301 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  PermissionsBitField,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType
+} = require("discord.js");
 
-// --- CONFIG ---
-const MY_ID = "1451533934130364467"; // ✅ Your ID is now locked in
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const mongoose = require("mongoose");
+const OpenAI = require("openai");
+require("dotenv").config();
 
-let botPersonality = "You are a chill, helpful AI. Keep it brief and friendly.";
-
+// ================= CONFIG =================
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.DirectMessages
-    ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates
+  ]
 });
 
-// --- 1. REGISTER SLASH COMMANDS ---
-const commands = [
-    new SlashCommandBuilder()
-        .setName('spam')
-        .setDescription('Secretly spam a message')
-        .addIntegerOption(opt => opt.setName('amount').setDescription('How many times').setRequired(true))
-        .addStringOption(opt => opt.setName('text').setDescription('What to say').setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('control')
-        .setDescription('Secretly make the bot send a message')
-        .addStringOption(opt => opt.setName('channelid').setDescription('Target Channel ID').setRequired(true))
-        .addStringOption(opt => opt.setName('message').setDescription('Content').setRequired(true)),
+const PREFIX = process.env.PREFIX || ";";
+const GUILD_ID = process.env.GUILD_ID;
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+const TICKET_CATEGORY_ID = process.env.TICKET_CATEGORY_ID;
+const VOICE_CATEGORY_ID = process.env.VOICE_CATEGORY_ID;
 
-    new SlashCommandBuilder()
-        .setName('reset')
-        .setDescription('Restart the bot'),
-
-    new SlashCommandBuilder()
-        .setName('editpersonality')
-        .setDescription('Change AI tone')
-        .addStringOption(opt => opt.setName('style').setDescription('New style').setRequired(true)),
-].map(command => command.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-client.once('ready', async () => {
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log(`✅ ${client.user.tag} is online and secretive!`);
-    } catch (err) {
-        console.error("Sync Error:", err);
-    }
+// ================= AI =================
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-// --- 2. HANDLE SLASH COMMANDS ---
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+async function ai(msg) {
+  try {
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a helpful Discord bot assistant." },
+        { role: "user", content: msg }
+      ]
+    });
 
-    // Security Check
-    const adminOnly = ['spam', 'control', 'reset'];
-    if (adminOnly.includes(interaction.commandName) && interaction.user.id !== MY_ID) {
-        return interaction.reply({ content: "⚠️ Command not found.", flags: [64] });
-    }
+    return res.choices[0].message.content;
+  } catch {
+    return "AI error 🤖";
+  }
+}
 
-    if (interaction.commandName === 'spam') {
-        const amount = Math.min(interaction.options.getInteger('amount'), 50);
-        const text = interaction.options.getString('text');
-        
-        // Ephemeral reply so only YOU see the bot acknowledged it
-        await interaction.reply({ content: "🤫 Stealth spam initiated...", flags: [64] });
-        
-        for (let i = 0; i < amount; i++) {
-            await interaction.channel.send(text);
-        }
-    }
+// ================= DB =================
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("🩸 MongoDB Connected"));
 
-    if (interaction.commandName === 'control') {
-        const chanId = interaction.options.getString('channelid');
-        const content = interaction.options.getString('message');
-        try {
-            const target = await client.channels.fetch(chanId);
-            await target.send(content);
-            await interaction.reply({ content: "✅ Secret message sent.", flags: [64] });
-        } catch (e) {
-            await interaction.reply({ content: "❌ Error: Invalid ID.", flags: [64] });
-        }
-    }
+// ================= MODELS =================
+const User = mongoose.model("User", new mongoose.Schema({
+  userId: String,
+  xp: { type: Number, default: 0 },
+  level: { type: Number, default: 0 },
+  balance: { type: Number, default: 0 }
+}));
 
-    if (interaction.commandName === 'reset') {
-        await interaction.reply({ content: "🔄 Rebooting...", flags: [64] });
-        process.exit(0);
-    }
+const Warn = mongoose.model("Warn", new mongoose.Schema({
+  userId: String,
+  moderatorId: String,
+  reason: String,
+  caseId: Number
+}));
 
-    if (interaction.commandName === 'editpersonality') {
-        botPersonality = interaction.options.getString('style');
-        await interaction.reply({ content: "✅ Personality updated.", flags: [64] });
-    }
+const Profile = mongoose.model("Profile", new mongoose.Schema({
+  userId: String,
+  roblox: String,
+  tiktok: String,
+  snapchat: String
+}));
+
+const Filter = mongoose.model("Filter", new mongoose.Schema({
+  guildId: String,
+  enabled: { type: Boolean, default: true },
+  words: { type: Array, default: ["fuck", "shit", "bitch"] }
+}));
+
+const Ticket = mongoose.model("Ticket", new mongoose.Schema({
+  channelId: String,
+  userId: String
+}));
+
+// ================= LOGGING =================
+async function log(guild, action, mod, target, reason) {
+  const channel = guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!channel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("📜 LOG")
+    .setColor("Red")
+    .addFields(
+      { name: "Action", value: action },
+      { name: "Moderator", value: `<@${mod}>` },
+      { name: "Target", value: target ? `<@${target}>` : "N/A" },
+      { name: "Reason", value: reason || "N/A" }
+    );
+
+  channel.send({ embeds: [embed] });
+}
+
+// ================= READY =================
+client.once("ready", () => {
+  console.log(`🩸 ${client.user.tag} ONLINE`);
 });
 
-// --- 3. HANDLE AI CHAT ---
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+// ================= MESSAGE =================
+client.on("messageCreate", async (message) => {
+  if (!message.guild || message.author.bot) return;
+  if (message.guild.id !== GUILD_ID) return;
 
-    if (message.mentions.has(client.user) || !message.guild) {
-        try {
-            await message.channel.sendTyping();
-            const prompt = message.content.replace(/<@!?\d+>/g, '').trim();
-            if (!prompt) return;
+  // ================= FILTER =================
+  const filter = await Filter.findOne({ guildId: message.guild.id });
 
-            const result = await model.generateContent(`System: ${botPersonality}\nUser: ${prompt}`);
-            const response = await result.response;
-            await message.reply(response.text());
-        } catch (err) {
-            console.error("AI Error:", err);
-        }
+  if (filter?.enabled) {
+    if (filter.words.some(w => message.content.toLowerCase().includes(w))) {
+      message.delete().catch(() => {});
+      log(message.guild, "FILTER", client.user.id, message.author.id, "Bad word");
+      return;
     }
+  }
+
+  // ================= XP + ECONOMY =================
+  let user = await User.findOne({ userId: message.author.id });
+  if (!user) user = await User.create({ userId: message.author.id });
+
+  user.xp += 5;
+  user.balance += 1;
+
+  if (user.xp >= (user.level + 1) * 100) {
+    user.level++;
+    user.xp = 0;
+    message.channel.send(`📈 ${message.author} reached level ${user.level}`);
+  }
+
+  await user.save();
+
+  // ================= PREFIX =================
+  if (!message.content.startsWith(PREFIX)) return;
+
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
+
+  // ================= HELP =================
+  if (cmd === "help") {
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🩸 HELP MENU")
+          .setColor("DarkRed")
+          .setDescription(`
+🤖 AI: ;ai <msg>
+
+🛡 MOD: ;ban ;warn ;purge
+
+🎫 Tickets: ;ticketpanel
+
+🌐 Profile: ;profile set/view
+
+💰 Economy: ;balance
+
+📊 Leaderboard: ;leaderboard
+          `)
+      ]
+    });
+  }
+
+  // ================= AI =================
+  if (cmd === "ai") {
+    return message.reply(await ai(args.join(" ")));
+  }
+
+  // ================= BALANCE =================
+  if (cmd === "balance") {
+    return message.reply(`💰 ${user.balance} coins`);
+  }
+
+  // ================= LEADERBOARD =================
+  if (cmd === "leaderboard") {
+    const top = await User.find().sort({ level: -1 }).limit(5);
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📊 LEADERBOARD")
+          .setDescription(
+            top.map((u, i) =>
+              `#${i + 1} <@${u.userId}> - Level ${u.level}`
+            ).join("\n")
+          )
+      ]
+    });
+  }
+
+  // ================= WARN =================
+  if (cmd === "warn") {
+    const target = message.mentions.members.first();
+    const reason = args.slice(1).join(" ") || "No reason";
+
+    const caseId = await Warn.countDocuments() + 1;
+
+    await Warn.create({
+      userId: target.id,
+      moderatorId: message.author.id,
+      reason,
+      caseId
+    });
+
+    await log(message.guild, "WARN", message.author.id, target.id, reason);
+    return message.reply(`⚠️ Warned ${target.user.tag}`);
+  }
+
+  // ================= BAN =================
+  if (cmd === "ban") {
+    const target = message.mentions.members.first();
+    await target.ban();
+
+    await log(message.guild, "BAN", message.author.id, target.id, "No reason");
+  }
+
+  // ================= PURGE =================
+  if (cmd === "purge") {
+    const amount = parseInt(args[0]);
+    await message.channel.bulkDelete(amount);
+
+    await log(message.guild, "PURGE", message.author.id, null, `${amount} msgs`);
+  }
+
+  // ================= PROFILE =================
+  if (cmd === "profile") {
+    let profile = await Profile.findOne({ userId: message.author.id });
+    if (!profile) profile = await Profile.create({ userId: message.author.id });
+
+    if (args[0] === "set") {
+      profile[args[1]] = args.slice(2).join(" ");
+      await profile.save();
+      return message.reply("Saved.");
+    }
+
+    const target = message.mentions.members.first() || message.member;
+    const data = await Profile.findOne({ userId: target.id });
+
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🌐 PROFILE")
+          .addFields(
+            { name: "Roblox", value: data?.roblox || "None" },
+            { name: "TikTok", value: data?.tiktok || "None" },
+            { name: "Snapchat", value: data?.snapchat || "None" }
+          )
+      ]
+    });
+  }
+
+  // ================= TICKET PANEL =================
+  if (cmd === "ticketpanel") {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("ticket_create")
+        .setLabel("Create Ticket")
+        .setStyle(ButtonStyle.Success)
+    );
+
+    return message.channel.send({
+      embeds: [new EmbedBuilder().setTitle("🎫 Tickets")],
+      components: [row]
+    });
+  }
 });
 
+// ================= BUTTONS =================
+client.on("interactionCreate", async (i) => {
+  if (!i.isButton()) return;
+
+  if (i.customId === "ticket_create") {
+    const channel = await i.guild.channels.create({
+      name: `ticket-${i.user.username}`,
+      type: ChannelType.GuildText,
+      parent: TICKET_CATEGORY_ID,
+      permissionOverwrites: [
+        { id: i.guild.id, deny: ["ViewChannel"] },
+        { id: i.user.id, allow: ["ViewChannel", "SendMessages"] }
+      ]
+    });
+
+    await Ticket.create({ channelId: channel.id, userId: i.user.id });
+
+    return i.reply({ content: "Ticket created!", ephemeral: true });
+  }
+});
+
+// ================= LOGIN =================
 client.login(process.env.TOKEN);
