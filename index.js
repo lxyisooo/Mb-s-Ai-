@@ -6,6 +6,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   REST,
   Routes,
   ActivityType
@@ -19,6 +20,7 @@ require("dotenv").config();
 const GUILD_ID = process.env.GUILD_ID;
 const PREFIX = process.env.PREFIX || ";";
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+const THEME_COLOR = "#2b2d31"; 
 
 // ================= CLIENT =================
 const client = new Client({
@@ -31,9 +33,10 @@ const client = new Client({
 });
 
 // ================= DB =================
-mongoose.connect(process.env.MONGO_URI);
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("💾 Connected to Database"))
+  .catch(err => console.error("❌ Database Error:", err));
 
-// ================= USER MODEL =================
 const userSchema = new mongoose.Schema({
   userId: String,
   warns: { type: Array, default: [] },
@@ -41,222 +44,158 @@ const userSchema = new mongoose.Schema({
 });
 const User = mongoose.model("User", userSchema);
 
-// ================= LOG SYSTEM =================
+// ================= HELPERS =================
 function log(guild, text) {
   const ch = guild.channels.cache.get(LOG_CHANNEL_ID);
   if (!ch) return;
-
   ch.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("📜 LOG")
-        .setColor("DarkRed")
-        .setDescription(text)
-    ]
+    embeds: [new EmbedBuilder().setTitle("📜 System Log").setColor("DarkRed").setDescription(text).setTimestamp()]
   });
 }
 
-// ================= AI =================
 async function ai(prompt) {
   const key = process.env.OPENAI_KEY;
-
-  if (!key) return `🤖 AI (offline): ${prompt}`;
-
+  if (!key) return `🤖 AI is currently offline.`;
   return new Promise((resolve) => {
-    const data = JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }]
-    });
-
+    const data = JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }] });
     const req = https.request({
       hostname: "api.openai.com",
       path: "/v1/chat/completions",
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
-      }
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
     }, res => {
       let body = "";
       res.on("data", c => body += c);
       res.on("end", () => {
-        try {
-          resolve(JSON.parse(body).choices[0].message.content);
-        } catch {
-          resolve("AI error.");
-        }
+        try { resolve(JSON.parse(body).choices[0].message.content); } 
+        catch { resolve("⚠️ AI encountered an error processing that."); }
       });
     });
-
     req.write(data);
     req.end();
   });
 }
 
-// ================= SLASH RESET =================
-const slashCommands = [
-  { name: "ping", description: "Latency" },
-  { name: "help", description: "Commands" },
-  { name: "ai", description: "Ask AI" },
-  { name: "afk", description: "Set AFK" }
-];
-
 // ================= READY =================
 client.once("ready", async () => {
   console.log(`💀 ${client.user.tag} ONLINE`);
+  client.user.setPresence({ activities: [{ name: "MB's Videos", type: ActivityType.Watching }], status: "idle" });
 
-  client.user.setPresence({
-    activities: [{ name: "MB's Videos ", type: ActivityType.Watching }],
-    status: "idle"
-  });
+  const slashCommands = [
+    { name: "ping", description: "Latency check" },
+    { name: "help", description: "Show premium menu" },
+    { name: "ai", description: "Ask the AI a question" }
+  ];
 
   const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
-  // PURGE OLD SLASH COMMANDS
-  await rest.put(
-    Routes.applicationGuildCommands(client.user.id, GUILD_ID),
-    { body: slashCommands }
-  );
+  try {
+    await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: slashCommands });
+  } catch (err) { console.error("Slash Error:", err); }
 });
 
-// ================= MESSAGE =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
-  if (message.author.bot) return;
-  if (message.guild?.id !== GUILD_ID) return;
+  if (message.author.bot || !message.guild) return;
 
-  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-  const cmd = args.shift()?.toLowerCase();
-
-  if (!message.content.startsWith(PREFIX)) return;
-
-  // ================= AFK SYSTEM =================
-  if (cmd === "afk") {
-    let user = await User.findOne({ userId: message.author.id });
-    if (!user) user = await User.create({ userId: message.author.id });
-
-    user.afk = args.join(" ") || "AFK";
-    await user.save();
-
-    return message.reply(`😴 AFK set: ${user.afk}`);
-  }
-
-  // remove AFK when chatting
-  let afkUser = await User.findOne({ userId: message.author.id });
+  // AFK Logic: Remove AFK
+  const afkUser = await User.findOne({ userId: message.author.id });
   if (afkUser?.afk) {
     afkUser.afk = null;
     await afkUser.save();
-    message.channel.send(`👋 Welcome back ${message.author}`);
+    message.reply("💫 Welcome back! I've removed your AFK status.").then(m => setTimeout(() => m.delete(), 5000));
   }
 
-  // ================= HELP =================
+  if (!message.content.startsWith(PREFIX)) return;
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift()?.toLowerCase();
+
+  // --- PREMIUM HELP MENU ---
   if (cmd === "help") {
-    return message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("Help Menu")
-          .setColor("DarkRed")
-          .setDescription(`
-🤖 AI
-;ai
+    const embed = new EmbedBuilder()
+      .setTitle("🔱 Help Menu")
+      .setColor(THEME_COLOR)
+      .setDescription("Welcome. Use the buttons below to navigate the command modules.")
+      .setThumbnail(client.user.displayAvatarURL());
 
-🛡 MOD
-;ban ;warn ;purge ;kick
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("h_mod").setLabel("Moderation").setStyle(ButtonStyle.Danger).setEmoji("🛡️"),
+      new ButtonBuilder().setCustomId("h_util").setLabel("Utility").setStyle(ButtonStyle.Secondary).setEmoji("⚙️"),
+      new ButtonBuilder().setCustomId("h_social").setLabel("Socials").setStyle(ButtonStyle.Primary).setEmoji("🌐")
+    );
 
-⚙ UTIL
-;ping ;avatar ;userinfo ;serverinfo ;uptime
-
-😴 AFK
-;afk
-
-🎫 TICKETS
-;ticketpanel
-
-🌐 SOCIAL
-;roblox ;tiktok ;snapchat ;youtube ;twitch
-          `)
-      ]
-    });
+    return message.reply({ embeds: [embed], components: [row] });
   }
 
-  // ================= UTILITY =================
-  if (cmd === "ping") return message.reply(`🏓 ${client.ws.ping}ms`);
-  if (cmd === "avatar") return message.reply(message.author.displayAvatarURL());
-  if (cmd === "uptime") return message.reply(`⏱ ${Math.floor(process.uptime())}s`);
-  if (cmd === "serverinfo") return message.reply(`📡 ${message.guild.name}`);
-  if (cmd === "userinfo") {
-    const u = message.mentions.users.first() || message.author;
-    return message.reply(`👤 ${u.tag}`);
+  // --- UTILITY ---
+  if (cmd === "ping") return message.reply(`🏓 **${client.ws.ping}ms**`);
+  if (cmd === "uptime") return message.reply(`⏱ Running for: **${Math.floor(process.uptime())}s**`);
+  if (cmd === "avatar") return message.reply(message.author.displayAvatarURL({ dynamic: true, size: 1024 }));
+  
+  if (cmd === "afk") {
+    const reason = args.join(" ") || "AFK";
+    await User.findOneAndUpdate({ userId: message.author.id }, { afk: reason }, { upsert: true });
+    return message.reply(`😴 AFK status set: **${reason}**`);
   }
 
-  // ================= AI =================
+  // --- AI ---
   if (cmd === "ai") {
+    const msg = await message.reply("🛰️ Processing request...");
     const res = await ai(args.join(" "));
-    return message.reply(`🤖 ${res}`);
+    return msg.edit(`🤖 ${res}`);
   }
 
-  // ================= MODERATION =================
+  // --- MODERATION ---
   if (cmd === "ban") {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers))
-      return message.reply("No permission.");
-
-    const m = message.mentions.members.first();
-    if (!m) return message.reply("Mention user.");
-
-    await m.ban();
-    log(message.guild, `🔨 Ban: ${m.user.tag}`);
-    return message.reply("Banned.");
-  }
-
-  if (cmd === "kick") {
-    const m = message.mentions.members.first();
-    if (!m) return;
-
-    await m.kick();
-    log(message.guild, `👢 Kick: ${m.user.tag}`);
-  }
-
-  if (cmd === "warn") {
-    const u = message.mentions.users.first();
-    let db = await User.findOne({ userId: u.id });
-    if (!db) db = await User.create({ userId: u.id });
-
-    db.warns.push(args.slice(1).join(" ") || "No reason");
-    await db.save();
-
-    log(message.guild, `⚠️ Warn: ${u.tag}`);
+    if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return;
+    const target = message.mentions.members.first();
+    if (!target) return message.reply("Specify a user.");
+    try {
+      await target.ban();
+      log(message.guild, `🔨 **Ban**: ${target.user.tag} by ${message.author.tag}`);
+      message.reply(" 😂✌️ banned");
+    } catch { message.reply("❌ Permission error."); }
   }
 
   if (cmd === "purge") {
     const amt = parseInt(args[0]);
-    await message.channel.bulkDelete(amt);
-    log(message.guild, `🧹 Purge: ${amt}`);
+    if (isNaN(amt) || amt > 1000) return message.reply("Enter 1-1000.");
+    await message.channel.bulkDelete(amt, true);
+    log(message.guild, `🧹 **Purge**: ${amt} messages in ${message.channel.name}`);
   }
 
-  // ================= SOCIAL =================
-  if (cmd === "roblox") return message.reply("🌐 Roblox lookup ready");
-  if (cmd === "tiktok") return message.reply("📱 TikTok lookup ready");
-  if (cmd === "snapchat") return message.reply("👻 Snapchat lookup ready");
-  if (cmd === "youtube") return message.reply("▶ YouTube lookup ready");
-  if (cmd === "twitch") return message.reply("🎮 Twitch lookup ready");
+  // --- SOCIALS ---
+  const socials = { 
+    roblox: "🌐 Roblox", tiktok: "📱 TikTok", snapchat: "👻 Snapchat", 
+    youtube: "▶️ YouTube", twitch: "🎮 Twitch" 
+  };
+  if (socials[cmd]) return message.reply(`${socials[cmd]} lookup system initialized.`);
 });
 
-// ================= SLASH =================
+// ================= INTERACTION HANDLER =================
 client.on("interactionCreate", async (i) => {
-  if (!i.isChatInputCommand()) return;
-  if (i.guildId !== GUILD_ID) return;
-
-  if (i.commandName === "ping")
-    return i.reply(`🏓 ${client.ws.ping}ms`);
-
-  if (i.commandName === "ai") {
-    const res = await ai(i.options.getString("message"));
-    return i.reply(`🤖 ${res}`);
+  if (i.isButton()) {
+    const pages = {
+      h_mod: "🛡️ **Moderation**\n`;ban` `;kick` `;warn` `;purge`",
+      h_util: "⚙️ **Utility**\n`;ping` `;avatar` `;userinfo` `;uptime` `;afk` `;ai`",
+      h_social: "🌐 **Socials**\n`;roblox` `;tiktok` `;snapchat` `;youtube` `;twitch`"
+    };
+    
+    const newEmbed = new EmbedBuilder()
+      .setColor(THEME_COLOR)
+      .setTitle("Module Information")
+      .setDescription(pages[i.customId]);
+    
+    await i.update({ embeds: [newEmbed] });
   }
 
-  if (i.commandName === "afk") {
-    return i.reply("AFK set via prefix ;afk for now");
+  if (i.isChatInputCommand()) {
+    if (i.commandName === "ping") await i.reply(`🏓 **${client.ws.ping}ms**`);
+    if (i.commandName === "ai") {
+        await i.deferReply();
+        const res = await ai(i.options.getString("message") || "Hello");
+        await i.editReply(`🤖 ${res}`);
+    }
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.TOKEN);
