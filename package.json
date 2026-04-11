@@ -1,14 +1,14 @@
 {
-  "name": "secret-gemini-bot",
-  "version": "1.2.0",
-  "description": "Private AI Chatbot with Secret Controls",
+  "name": "bleed-mode-bot",
+  "version": "5.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "@google/generative-ai": "^0.2.1",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.16.3",
+    "mongoose": "^8.0.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.0.0"
   }
 }
