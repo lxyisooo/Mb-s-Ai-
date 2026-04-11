@@ -1,13 +1,19 @@
 {
   "name": "god-mode-bot",
-  "version": "2.0.0",
-  "main": "src/index.js",
+  "version": "3.0.0",
+  "description": "Advanced all-in-one Discord utility bot",
+  "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
-    "discord.js": "^14.16.3",
-    "mongoose": "^8.0.0",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.15.3",
+    "openai": "^4.38.2",
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.8"
   }
 }
