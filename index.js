@@ -109,7 +109,7 @@ const triviaPool = [
     { id: 77, q: "Math: What is the only even prime number?", a: "2" },
     { id: 78, q: "Geography: What is the largest island in the world?", a: "greenland" },
     { id: 79, q: "Science: Which organ pumps blood through the body?", a: "heart" },
-    { id: 80, q: "History: Who was the King of Rock and Roll?", a: "elvis presley" },
+    { id: 80, q: "History: Who was the King of Rock and Roll?", a: "elvis prevley" },
     { id: 81, q: "Math: What is 1/2 + 1/4?", a: "0.75" },
     { id: 82, q: "Geography: What is the capital of Germany?", a: "berlin" },
     { id: 83, q: "Science: How many teeth does an adult human have?", a: "32" },
@@ -131,31 +131,6 @@ const triviaPool = [
     { id: 99, q: "Science: What is the chemical symbol for Sodium?", a: "na" },
     { id: 100, q: "Misc: What is the largest planet in our solar system?", a: "jupiter" }
 ];
-
-// ================= [ INSTANT GUILD REGISTRATION ] =================
-const slashCommands = [
-    new SlashCommandBuilder().setName('drop').setDescription('Owner: Trigger Star Drop'),
-    new SlashCommandBuilder().setName('trivia').setDescription('Owner: Trigger Unique Trivia'),
-    new SlashCommandBuilder().setName('jackpot').setDescription('Owner: Trigger Mega Jackpot')
-].map(cmd => cmd.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-(async () => {
-    try {
-        console.log("🧨 WIPING STUCK GLOBAL COMMANDS...");
-        // This clears global cache so they stop appearing everywhere
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
-        
-        console.log("✅ GLOBAL WIPED. REGISTERING GUILD COMMANDS...");
-        // This makes them appear INSTANTLY in your specific server
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), 
-            { body: slashCommands }
-        );
-        console.log("👑 GUILD COMMANDS ACTIVE.");
-    } catch (err) { console.error(err); }
-})();
 
 // ================= [ CORE FUNCTIONS ] =================
 
@@ -196,13 +171,6 @@ async function sendEvent(type, channel) {
 // ================= [ EVENT HANDLERS ] =================
 
 client.on("interactionCreate", async (i) => {
-    if (i.isChatInputCommand()) {
-        if (i.user.id !== OWNER_ID) return i.reply({ content: "Unauthorized.", ephemeral: true });
-        const channel = client.channels.cache.get(process.env.GAME_CHANNEL_ID);
-        await sendEvent(i.commandName, channel);
-        return i.reply({ content: "✅ Event Triggered.", ephemeral: true });
-    }
-
     if (i.isButton()) {
         const prices = { buy_shield: 2500, buy_mutator: 5000, buy_relic: 20000, buy_diamond: 50000, buy_hole: 500000 };
         const cost = prices[i.customId];
@@ -218,6 +186,7 @@ client.on("interactionCreate", async (i) => {
 client.on("messageCreate", async (m) => {
     if (m.author.bot) return;
 
+    // ANSWER CHECKER
     if (activeEvent && m.content.toLowerCase().includes(activeEvent.answer)) {
         const { reward, type, id } = activeEvent;
         activeEvent = null;
@@ -229,9 +198,22 @@ client.on("messageCreate", async (m) => {
     }
 
     if (!m.content.startsWith(";")) return;
-    const cmd = m.content.slice(1).trim().toLowerCase();
+    const args = m.content.slice(1).trim().split(/ +/);
+    const cmd = args.shift().toLowerCase();
 
-    // PREMIUM HELP UI
+    // ================= [ OWNER OVERRIDE COMMANDS ] =================
+    if (["drop", "trivia", "jackpot"].includes(cmd)) {
+        if (m.author.id !== OWNER_ID) return; // Silent fail if not you
+        
+        // Delete your trigger message instantly
+        try { await m.delete(); } catch (e) {}
+
+        const targetChannel = m.mentions.channels.first() || m.channel;
+        await sendEvent(cmd, targetChannel);
+        return;
+    }
+
+    // ECONOMY COMMANDS
     if (cmd === "help") {
         const help = new EmbedBuilder()
             .setAuthor({ name: "SYSTEM OVERVIEW", iconURL: m.guild.iconURL() })
@@ -245,7 +227,6 @@ client.on("messageCreate", async (m) => {
         return m.reply({ embeds: [help] });
     }
 
-    // PREMIUM SHOP UI (CLEAN AISLE)
     if (cmd === "shop") {
         const shop = new EmbedBuilder()
             .setAuthor({ name: "VAULT | BROWSE AISLES", iconURL: "https://i.imgur.com/u5uHqPn.png" })
