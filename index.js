@@ -42,7 +42,7 @@ client.on('messageCreate', async (message) => {
             .setTitle("💎 WIMBLE OMEGA | DASHBOARD")
             .setDescription("Welcome! Please select a category to view commands and details.")
             .setColor("#2b2d31")
-            .setImage('https://i.imgur.com/your-cool-banner.png');
+            .setImage('https://cdn.discordapp.com/attachments/1472241319014437087/1492955559668875274/4d462c6059bc1600b9dad9cce527787c.jpg?ex=69dd36b7&is=69dbe537&hm=ab580192d82819d6fc5bbfb48224059d5949b069aa2c132c0254979f2979b4a4&');
 
         const menu = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder().setCustomId('h_nav').setPlaceholder('Navigate...')
