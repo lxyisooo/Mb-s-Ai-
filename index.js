@@ -1,160 +1,223 @@
 const { 
     Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, PermissionsBitField, REST, Routes, ActivityType, ChannelType 
+    ButtonStyle, ActivityType 
 } = require("discord.js");
 const mongoose = require("mongoose");
-const https = require("https");
 require("dotenv").config();
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers
     ]
 });
 
 // ================= DATABASE MODELS =================
 const User = mongoose.model("User", new mongoose.Schema({
     userId: String,
-    warns: { type: Array, default: [] },
-    afk: { type: String, default: null },
-    xp: { type: Number, default: 0 },
-    level: { type: Number, default: 0 }
+    stars: { type: Number, default: 0 },
+    inventory: { type: Array, default: [] }
 }));
 
-const GuildConfig = mongoose.model("Guild", new mongoose.Schema({
-    guildId: String,
-    logs: String,
-    ticketCategory: String
+const TriviaStats = mongoose.model("TriviaStats", new mongoose.Schema({
+    usedIds: { type: Array, default: [] } 
 }));
 
-// ================= UTILS & AI =================
-const theme = "#2b2d31";
-const log = async (guild, text) => {
-    const cfg = await GuildConfig.findOne({ guildId: guild.id });
-    const ch = guild.channels.cache.get(cfg?.logs || process.env.LOG_CHANNEL_ID);
-    if (ch) ch.send({ embeds: [new EmbedBuilder().setColor("Red").setDescription(text).setTimestamp()] });
-};
+const theme = "#5865F2"; 
+let activeEvent = null; 
 
-async function ai(prompt) {
-    const key = process.env.OPENAI_KEY;
-    if (!key) return "🤖 AI is offline.";
-    return new Promise((resolve) => {
-        const data = JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }] });
-        const req = https.request({
-            hostname: "api.openai.com", path: "/v1/chat/completions", method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
-        }, res => {
-            let body = "";
-            res.on("data", c => body += c);
-            res.on("end", () => { try { resolve(JSON.parse(body).choices[0].message.content); } catch { resolve("AI Error."); } });
-        });
-        req.write(data); req.end();
-    });
-}
+// ================= THE 100+ UNIQUE TRIVIA POOL =================
+const triviaPool = [
+    { id: 1, q: "Science: What is the most common element in the universe?", a: "hydrogen" },
+    { id: 2, q: "Science: What part of the cell is the powerhouse?", a: "mitochondria" },
+    { id: 3, q: "Science: What is the boiling point of water (Celsius)?", a: "100" },
+    { id: 4, q: "Math: Solve for x: 3x - 9 = 21", a: "10" },
+    { id: 5, q: "History: In what year did WWI start?", a: "1914" },
+    { id: 6, q: "Science: What gas do plants absorb from the air?", a: "carbon dioxide" },
+    { id: 7, q: "Geography: What is the capital of Japan?", a: "tokyo" },
+    { id: 8, q: "Math: What is the square root of 144?", a: "12" },
+    { id: 9, q: "History: Who was the first US President?", a: "george washington" },
+    { id: 10, q: "Science: H2O is the chemical formula for what?", a: "water" },
+    { id: 11, q: "Math: How many degrees are in a right angle?", a: "90" },
+    { id: 12, q: "Science: What is the hardest natural substance?", a: "diamond" },
+    { id: 13, q: "History: Who painted the Mona Lisa?", a: "da vinci" },
+    { id: 14, q: "Geography: Which is the largest ocean?", a: "pacific" },
+    { id: 15, q: "Math: What is 15% of 200?", a: "30" },
+    { id: 16, q: "Science: What is the closest star to Earth?", a: "sun" },
+    { id: 17, q: "History: What year did the Berlin Wall fall?", a: "1989" },
+    { id: 18, q: "Geography: What is the capital of France?", a: "paris" },
+    { id: 19, q: "Science: Which blood type is the universal donor?", a: "o" },
+    { id: 20, q: "Math: How many sides does a heptagon have?", a: "7" },
+    // ... [Include all 100+ unique questions here] ...
+    { id: 100, q: "Misc: What is the largest planet in our solar system?", a: "jupiter" }
+];
 
-// ================= BOT READY =================
+// ================= READY EVENT =================
 client.once("ready", async () => {
-    console.log(`😈 ${client.user.tag} IS LOADED`);
-    client.user.setPresence({ activities: [{ name: "MB's Videos", type: ActivityType.Watching }], status: "dnd" });
-    
-    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-    await rest.put(Routes.applicationGuildCommands(client.user.id, process.env.GUILD_ID), {
-        body: [
-            { name: "help", description: "Premium Menu" },
-            { name: "ai", description: "Ask AI", options: [{ name: "query", type: 3, description: "Your question", required: true }] },
-            { name: "ping", description: "Check speed" }
-        ]
-    });
+    console.log(`💫 MB STARS SYSTEM V16 | ECONOMY LIMITS APPLIED`);
+    client.user.setPresence({ activities: [{ name: "MB Stars Drops", type: ActivityType.Watching }], status: "online" });
+
+    const startLoop = () => {
+        const randomTime = (Math.random() * (10 - 5) + 5) * 60 * 1000;
+        setTimeout(async () => {
+            await triggerEvent();
+            startLoop(); 
+        }, randomTime);
+    };
+    startLoop();
 });
 
-// ================= MESSAGE EVENT (LEVELS, AFK, CMDS) =================
+// ================= EVENT ENGINE =================
+async function triggerEvent() {
+    const channel = client.channels.cache.get(process.env.GAME_CHANNEL_ID);
+    if (!channel) return;
+
+    const chance = Math.random() * 100;
+
+    if (chance <= 5) { 
+        // 5% CHANCE: MEGA JACKPOT (MAX 67k)
+        const reward = Math.floor(Math.random() * 37000) + 30000; // Ranges 30k to 67k
+        const code = "MB-JACKPOT-" + Math.floor(Math.random() * 99);
+        activeEvent = { answer: code.toLowerCase(), reward, type: "JACKPOT" };
+        
+        const embed = new EmbedBuilder()
+            .setTitle("🔥 MEGA JACKPOT DROP 🔥")
+            .setColor("#ff0000")
+            .setDescription(`Type the code fast!\n\n📝 Code: **${code}**\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`)
+            .setFooter({ text: "For help type ;help" });
+        await channel.send({ embeds: [embed] });
+
+    } else if (chance <= 35) {
+        // 30% CHANCE: UNIQUE TRIVIA (MAX 1.5k)
+        let stats = await TriviaStats.findOne() || await TriviaStats.create({ usedIds: [] });
+        const availableTrivia = triviaPool.filter(t => !stats.usedIds.includes(t.id));
+
+        if (availableTrivia.length === 0) return triggerRegularDrop(channel);
+
+        const trivia = availableTrivia[Math.floor(Math.random() * availableTrivia.length)];
+        const reward = Math.floor(Math.random() * 500) + 1000; // Ranges 1k to 1.5k
+        activeEvent = { answer: trivia.a.toLowerCase(), reward, type: "TRIVIA", id: trivia.id };
+
+        const embed = new EmbedBuilder()
+            .setTitle("🧠 MB ACADEMIC TRIVIA")
+            .setColor("#00fbff")
+            .setDescription(`**QUESTION:** ${trivia.q}\n\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`)
+            .setFooter({ text: "Checkout the chicken bot aswell by using m help" });
+        await channel.send({ embeds: [embed] });
+
+    } else {
+        triggerRegularDrop(channel);
+    }
+}
+
+async function triggerRegularDrop(channel) {
+    const reward = Math.floor(Math.random() * 130) + 200; // Ranges 200 to 330
+    const code = "MB" + Math.floor(Math.random() * 9999);
+    activeEvent = { answer: code.toLowerCase(), reward, type: "DROP" };
+
+    const embed = new EmbedBuilder()
+        .setTitle("💫 MB STARS DROP")
+        .setColor(theme)
+        .setDescription(`Type the code fast!\n\n📝 Code: **${code}**\n💰 Reward: **${reward} 💫 Stars**`)
+        .setFooter({ text: "For help type ;help" });
+    await channel.send({ embeds: [embed] });
+}
+
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (m) => {
     if (m.author.bot || !m.guild) return;
 
-    // AFK Check & Removal
-    const afkData = await User.findOne({ userId: m.author.id });
-    if (afkData?.afk) {
-        afkData.afk = null; await afkData.save();
-        m.reply("👋 **AFK Removed.**").then(msg => setTimeout(() => msg.delete(), 3000));
-    }
-    m.mentions.users.forEach(async (u) => {
-        const targetAfk = await User.findOne({ userId: u.id });
-        if (targetAfk?.afk) m.reply(`😴 **${u.username}** is AFK: ${targetAfk.afk}`);
-    });
+    if (activeEvent && m.content.toLowerCase().includes(activeEvent.answer)) {
+        const { reward, type, id } = activeEvent;
+        activeEvent = null; 
 
-    // XP System
-    let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
-    user.xp += Math.floor(Math.random() * 10) + 5;
-    if (user.xp >= (user.level + 1) * 100) {
-        user.level++;
-        m.channel.send(`✨ **Level Up!** ${m.author} is now level **${user.level}**`);
-    }
-    await user.save();
+        if (type === "TRIVIA") {
+            await TriviaStats.updateOne({}, { $push: { usedIds: id } });
+        }
 
-    // Command Handler
-    const prefix = process.env.PREFIX || ";";
-    if (!m.content.startsWith(prefix)) return;
-    const args = m.content.slice(prefix.length).trim().split(/ +/);
+        let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
+        user.stars += reward;
+        await user.save();
+
+        const winEmbed = new EmbedBuilder()
+            .setColor("Green")
+            .setDescription(type === "TRIVIA" 
+                ? `🧠 **${m.author.username}** correctly answered! **+${reward.toLocaleString()} 💫 Stars**` 
+                : `✅ **${m.author.username}** claimed the stars! **+${reward.toLocaleString()} 💫 Stars**`)
+            .setFooter({ text: type === "TRIVIA" ? "Checkout the chicken bot aswell by using m help" : "For help type ;help" });
+
+        return m.reply({ embeds: [winEmbed] });
+    }
+
+    if (!m.content.startsWith(";")) return;
+    const args = m.content.slice(1).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    // --- CMDS ---
     if (cmd === "help") {
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("h_mod").setLabel("Moderation").setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("h_util").setLabel("Utility").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId("h_social").setLabel("Socials").setStyle(ButtonStyle.Primary)
+        const helpEmbed = new EmbedBuilder()
+            .setTitle("🔱 MB Stars | God-Mode System")
+            .setColor(theme)
+            .setDescription("The ultimate engagement system. Earn **💫 MB Stars** by being the fastest.")
+            .addFields(
+                { name: "🎯 Economy", value: "Drops: 330 Max\nTrivia: 1.5k Max\nJackpot: 67k Max", inline: false },
+                { name: "💸 Commands", value: "`;bal` - Your Balance\n`;shop` - Premium Items", inline: true }
+            );
+        return m.reply({ embeds: [helpEmbed] });
+    }
+
+    if (cmd === "bal" || cmd === "stars") {
+        let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
+        return m.reply(`💳 **${m.author.username}**, you have **${user.stars.toLocaleString()} 💫 MB Stars**.`);
+    }
+
+    if (cmd === "shop") {
+        const shopEmbed = new EmbedBuilder()
+            .setTitle("🛒 MB STARS PREMIUM VAULT")
+            .setColor(theme)
+            .addFields(
+                { name: "🛡️ Star Shield", value: "2,500 💫", inline: true },
+                { name: "🧬 XP Mutator", value: "5,000 💫", inline: true },
+                { name: "🛰️ Satellite", value: "8,500 💫", inline: true },
+                { name: "🧪 Growth Serum", value: "12,000 💫", inline: true },
+                { name: "🔮 Ancient Relic", value: "20,000 💫", inline: true },
+                { name: "🏎️ Velocity Engine", value: "35,000 💫", inline: true },
+                { name: "💎 Void Diamond", value: "50,000 💫", inline: true },
+                { name: "🌌 Galaxy Map", value: "75,000 💫", inline: true },
+                { name: "👑 Star Crown", value: "150,000 💫", inline: true },
+                { name: "🌀 Black Hole", value: "500,000 💫", inline: true }
+            );
+
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("buy_shield").setLabel("Shield").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("buy_mutator").setLabel("Mutator").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("buy_relic").setLabel("Relic").setStyle(ButtonStyle.Primary)
         );
-        m.reply({ embeds: [new EmbedBuilder().setTitle("🔱 God Mode Control").setColor(theme).setDescription("Select a module below.")], components: [row] });
-    }
 
-    if (cmd === "ticketpanel") {
-        if (!m.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("t_open").setLabel("Create Ticket").setStyle(ButtonStyle.Success).setEmoji("🎫"));
-        m.channel.send({ embeds: [new EmbedBuilder().setTitle("Support Tickets").setDescription("Click below to open a private ticket.").setColor(theme)], components: [row] });
-    }
+        const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("buy_diamond").setLabel("Diamond").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId("buy_hole").setLabel("Black Hole").setStyle(ButtonStyle.Danger)
+        );
 
-    if (cmd === "ban") {
-        const target = m.mentions.members.first();
-        if (!target || !m.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return m.reply("❌ Error.");
-        await target.ban().catch(() => m.reply("❌ Hierarchy error."));
-        log(m.guild, `🔨 **Ban**: ${target.user.tag}`);
+        return m.reply({ embeds: [shopEmbed], components: [row1, row2] });
     }
-
-    if (cmd === "ai") m.reply(`🤖 ${await ai(args.join(" "))}`);
-    
-    // Social Lookups
-    const socials = ["roblox", "tiktok", "youtube", "snapchat", "twitch", "github", "twitter"];
-    if (socials.includes(cmd)) m.reply(`🌐 Searching **${cmd}** for: \`${args.join(" ")}\`... (Module Ready)`);
 });
 
-// ================= INTERACTION HANDLER (TICKETS & BUTTONS) =================
 client.on("interactionCreate", async (i) => {
-    if (i.isButton()) {
-        if (i.customId === "t_open") {
-            const ch = await i.guild.channels.create({
-                name: `ticket-${i.user.username}`,
-                type: ChannelType.GuildText,
-                permissionOverwrites: [
-                    { id: i.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-                    { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }
-                ]
-            });
-            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("t_close").setLabel("Close").setStyle(ButtonStyle.Danger));
-            ch.send({ content: `${i.user}`, embeds: [new EmbedBuilder().setTitle("Ticket Opened").setDescription("Support will be with you shortly.").setColor("Green")], components: [row] });
-            await i.reply({ content: `✅ Ticket created: ${ch}`, ephemeral: true });
-        }
-        if (i.customId === "t_close") {
-            await i.reply("🔒 Closing ticket in 5s...");
-            setTimeout(() => i.channel.delete(), 5000);
-        }
-        // Help Menu Pages
-        if (i.customId.startsWith("h_")) {
-            const map = { h_mod: "🛡️ `;ban` `;kick` `;purge` `;warn`", h_util: "⚙️ `;help` `;afk` `;ai` `;ping` `;level`", h_social: "🌐 `;roblox` `;tiktok` `;youtube` `;github`" };
-            await i.update({ embeds: [new EmbedBuilder().setTitle("Module Info").setDescription(map[i.customId]).setColor(theme)] });
-        }
-    }
+    if (!i.isButton()) return;
+    const prices = {
+        buy_shield: 2500, buy_mutator: 5000, buy_relic: 20000, 
+        buy_diamond: 50000, buy_hole: 500000
+    };
+    const cost = prices[i.customId];
+    if (!cost) return;
+
+    let user = await User.findOne({ userId: i.user.id }) || await User.create({ userId: i.user.id });
+    if (user.stars < cost) return i.reply({ content: `❌ You need more 💫 stars!`, ephemeral: true });
+
+    user.stars -= cost;
+    user.inventory.push(i.component.label);
+    await user.save();
+    await i.reply({ content: `✅ Purchased **${i.component.label}**!`, ephemeral: true });
 });
 
 mongoose.connect(process.env.MONGO_URI).then(() => client.login(process.env.TOKEN));
