@@ -1,20 +1,17 @@
 {
-  "name": "god-mode-bot",
-  "version": "3.0.0",
-  "description": "Advanced all-in-one Discord utility bot",
+  "name": "mb-stars-bot",
+  "version": "1.2.0",
+  "description": "Premium Engagement Bot with Strict Economy Limits",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=20.0.0"
-  },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "mongoose": "^8.0.0",
-    "dotenv": "^16.4.5",
-    "openai": "^4.38.2",
-    "axios": "^1.6.8"
+    "discord.js": "^14.14.1",
+    "mongoose": "^8.1.1",
+    "dotenv": "^16.4.1"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
