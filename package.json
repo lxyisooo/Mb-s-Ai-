@@ -1,11 +1,13 @@
 {
-  "name": "mb-stars-system",
-  "version": "2.0.0",
-  "description": "Premium Economy & Owner Slash System",
+  "name": "wimble-gambling-pro",
+  "version": "2.5.0",
+  "description": "All-in-one Gambling and Social Bot",
   "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "mongoose": "^8.1.1",
-    "dotenv": "^16.4.1"
+    "dotenv": "^16.4.5"
   }
 }
