@@ -1,6 +1,6 @@
 const { 
     Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, ActivityType 
+    ButtonStyle, ActivityType, SlashCommandBuilder, REST, Routes 
 } = require("discord.js");
 const mongoose = require("mongoose");
 require("dotenv").config();
@@ -11,6 +11,11 @@ const client = new Client({
         GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers
     ]
 });
+
+// ================= SETTINGS =================
+const OWNER_ID = "1451533934130364467"; // <--- CHANGE THIS
+const theme = "#1a1a1a"; 
+let activeEvent = null; 
 
 // ================= DATABASE MODELS =================
 const User = mongoose.model("User", new mongoose.Schema({
@@ -23,10 +28,7 @@ const TriviaStats = mongoose.model("TriviaStats", new mongoose.Schema({
     usedIds: { type: Array, default: [] } 
 }));
 
-const theme = "#5865F2"; 
-let activeEvent = null; 
-
-// ================= THE 100+ UNIQUE TRIVIA POOL =================
+// ================= THE 100 UNIQUE TRIVIA POOL =================
 const triviaPool = [
     { id: 1, q: "Science: What is the most common element in the universe?", a: "hydrogen" },
     { id: 2, q: "Science: What part of the cell is the powerhouse?", a: "mitochondria" },
@@ -48,176 +50,203 @@ const triviaPool = [
     { id: 18, q: "Geography: What is the capital of France?", a: "paris" },
     { id: 19, q: "Science: Which blood type is the universal donor?", a: "o" },
     { id: 20, q: "Math: How many sides does a heptagon have?", a: "7" },
-    // ... [Include all 100+ unique questions here] ...
+    { id: 21, q: "Science: What is the largest organ in the human body?", a: "skin" },
+    { id: 22, q: "History: Who was known as the Maid of Orleans?", a: "joan of arc" },
+    { id: 23, q: "Geography: What is the longest river in the world?", a: "nile" },
+    { id: 24, q: "Science: What is the center of an atom called?", a: "nucleus" },
+    { id: 25, q: "Math: What is the value of Pi to two decimal places?", a: "3.14" },
+    { id: 26, q: "History: Which empire built the Colosseum?", a: "roman" },
+    { id: 27, q: "Science: What do bees collect to make honey?", a: "nectar" },
+    { id: 28, q: "Math: What is 8 squared?", a: "64" },
+    { id: 29, q: "Geography: On which continent is the Sahara Desert?", a: "africa" },
+    { id: 30, q: "Science: What is the chemical symbol for Gold?", a: "au" },
+    { id: 31, q: "History: Who wrote the Declaration of Independence?", a: "thomas jefferson" },
+    { id: 32, q: "Math: What is 100 divided by 4?", a: "25" },
+    { id: 33, q: "Geography: What is the capital of Italy?", a: "rome" },
+    { id: 34, q: "Science: How many planets are in our solar system?", a: "8" },
+    { id: 35, q: "History: Who was the first man to step on the moon?", a: "neil armstrong" },
+    { id: 36, q: "Math: What is the sum of angles in a triangle?", a: "180" },
+    { id: 37, q: "Science: What planet is known as the Red Planet?", a: "mars" },
+    { id: 38, q: "Geography: What is the capital of Canada?", a: "ottawa" },
+    { id: 39, q: "History: Who was the leader of the Civil Rights Movement?", a: "martin luther king" },
+    { id: 40, q: "Science: What is the freezing point of water in Celsius?", a: "0" },
+    { id: 41, q: "Math: What is 7 times 8?", a: "56" },
+    { id: 42, q: "Geography: Which country has the most population?", a: "india" },
+    { id: 43, q: "History: In what year did the Titanic sink?", a: "1912" },
+    { id: 44, q: "Science: What gas do humans breathe out?", a: "carbon dioxide" },
+    { id: 45, q: "Math: What is the next prime number after 7?", a: "11" },
+    { id: 46, q: "Geography: What is the smallest country in the world?", a: "vatican city" },
+    { id: 47, q: "History: Who discovered gravity when an apple fell?", a: "isaac newton" },
+    { id: 48, q: "Science: What is the speed of light?", a: "299792458" },
+    { id: 49, q: "Math: What is the perimeter of a 5x5 square?", a: "20" },
+    { id: 50, q: "Geography: Which state is the largest in the USA?", a: "alaska" },
+    { id: 51, q: "Science: What is the chemical symbol for Iron?", a: "fe" },
+    { id: 52, q: "History: Who was the first woman to win a Nobel Prize?", a: "marie curie" },
+    { id: 53, q: "Math: What is 12 multiplied by 12?", a: "144" },
+    { id: 54, q: "Geography: Mount Everest is in which mountain range?", a: "himalayas" },
+    { id: 55, q: "Science: How many bones are in the adult human body?", a: "206" },
+    { id: 56, q: "History: Which country gifted the Statue of Liberty?", a: "france" },
+    { id: 57, q: "Math: How many zeros are in a million?", a: "6" },
+    { id: 58, q: "Geography: What is the largest desert in the world?", a: "antarctica" },
+    { id: 59, q: "Science: What is the most common gas in Earth's atmosphere?", a: "nitrogen" },
+    { id: 60, q: "History: Who was the 16th US President?", a: "abraham lincoln" },
+    { id: 61, q: "Math: Solve 2 + 2 * 2", a: "6" },
+    { id: 62, q: "Geography: What is the capital of Spain?", a: "madrid" },
+    { id: 63, q: "Science: What type of animal is a Komodo dragon?", a: "lizard" },
+    { id: 64, q: "History: When did World War II end?", a: "1945" },
+    { id: 65, q: "Math: What is the square root of 81?", a: "9" },
+    { id: 66, q: "Geography: What is the capital of Egypt?", a: "cairo" },
+    { id: 67, q: "Science: What is the study of fossils called?", a: "paleontology" },
+    { id: 68, q: "History: Who was the first Emperor of Rome?", a: "augustus" },
+    { id: 69, q: "Math: What is 25% of 80?", a: "20" },
+    { id: 70, q: "Geography: Which country is known as the Land of the Rising Sun?", a: "japan" },
+    { id: 71, q: "Science: What is the chemical symbol for Silver?", a: "ag" },
+    { id: 72, q: "History: Who invented the lightbulb?", a: "thomas edison" },
+    { id: 73, q: "Math: How many seconds are in an hour?", a: "3600" },
+    { id: 74, q: "Geography: What is the largest continent?", a: "asia" },
+    { id: 75, q: "Science: What is the main source of energy for Earth?", a: "sun" },
+    { id: 76, q: "History: What was the ancient name for Iraq?", a: "mesopotamia" },
+    { id: 77, q: "Math: What is the only even prime number?", a: "2" },
+    { id: 78, q: "Geography: What is the largest island in the world?", a: "greenland" },
+    { id: 79, q: "Science: Which organ pumps blood through the body?", a: "heart" },
+    { id: 80, q: "History: Who was the King of Rock and Roll?", a: "elvis presley" },
+    { id: 81, q: "Math: What is 1/2 + 1/4?", a: "0.75" },
+    { id: 82, q: "Geography: What is the capital of Germany?", a: "berlin" },
+    { id: 83, q: "Science: How many teeth does an adult human have?", a: "32" },
+    { id: 84, q: "History: Who was the longest-reigning British monarch?", a: "elizabeth ii" },
+    { id: 85, q: "Math: How many sides does a hexagon have?", a: "6" },
+    { id: 86, q: "Geography: What is the smallest continent?", a: "australia" },
+    { id: 87, q: "Science: What force keeps us on the ground?", a: "gravity" },
+    { id: 88, q: "History: What was the first civilization?", a: "sumerians" },
+    { id: 89, q: "Math: What is the square root of 16?", a: "4" },
+    { id: 90, q: "Geography: What is the capital of Australia?", a: "canberra" },
+    { id: 91, q: "Science: What is the largest mammal on Earth?", a: "blue whale" },
+    { id: 92, q: "History: In what year was the Magna Carta signed?", a: "1215" },
+    { id: 93, q: "Math: What is 9 multiplied by 9?", a: "81" },
+    { id: 94, q: "Geography: What is the capital of Russia?", a: "moscow" },
+    { id: 95, q: "Science: What color are emeralds?", a: "green" },
+    { id: 96, q: "History: Who wrote Romeo and Juliet?", a: "william shakespeare" },
+    { id: 97, q: "Math: What is 50 times 50?", a: "2500" },
+    { id: 98, q: "Geography: Which country has the most volcanoes?", a: "indonesia" },
+    { id: 99, q: "Science: What is the chemical symbol for Sodium?", a: "na" },
     { id: 100, q: "Misc: What is the largest planet in our solar system?", a: "jupiter" }
 ];
 
-// ================= READY EVENT =================
-client.once("ready", async () => {
-    console.log(`💫 MB STARS SYSTEM V16 | ECONOMY LIMITS APPLIED`);
-    client.user.setPresence({ activities: [{ name: "MB Stars Drops", type: ActivityType.Watching }], status: "online" });
+// ================= SLASH REGISTRATION (HARD LOCKED) =================
+const commands = [
+    new SlashCommandBuilder().setName('drop').setDescription('**@lyxis0**'),
+    new SlashCommandBuilder().setName('trivia').setDescription('**@lxys0**'),
+    new SlashCommandBuilder().setName('jackpot').setDescription('**@lxyis0**')
+].map(command => command.toJSON());
 
-    const startLoop = () => {
-        const randomTime = (Math.random() * (10 - 5) + 5) * 60 * 1000;
-        setTimeout(async () => {
-            await triggerEvent();
-            startLoop(); 
-        }, randomTime);
-    };
-    startLoop();
-});
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+(async () => {
+    try {
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    } catch (e) { console.error(e); }
+})();
 
-// ================= EVENT ENGINE =================
-async function triggerEvent() {
-    const channel = client.channels.cache.get(process.env.GAME_CHANNEL_ID);
-    if (!channel) return;
+// ================= EVENT ENGINES =================
 
-    const chance = Math.random() * 100;
-
-    if (chance <= 5) { 
-        // 5% CHANCE: MEGA JACKPOT (MAX 67k)
-        const reward = Math.floor(Math.random() * 37000) + 30000; // Ranges 30k to 67k
-        const code = "MB-JACKPOT-" + Math.floor(Math.random() * 99);
-        activeEvent = { answer: code.toLowerCase(), reward, type: "JACKPOT" };
-        
-        const embed = new EmbedBuilder()
-            .setTitle("🔥 MEGA JACKPOT DROP 🔥")
-            .setColor("#ff0000")
-            .setDescription(`Type the code fast!\n\n📝 Code: **${code}**\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`)
-            .setFooter({ text: "For help type ;help" });
-        await channel.send({ embeds: [embed] });
-
-    } else if (chance <= 35) {
-        // 30% CHANCE: UNIQUE TRIVIA (MAX 1.5k)
-        let stats = await TriviaStats.findOne() || await TriviaStats.create({ usedIds: [] });
-        const availableTrivia = triviaPool.filter(t => !stats.usedIds.includes(t.id));
-
-        if (availableTrivia.length === 0) return triggerRegularDrop(channel);
-
-        const trivia = availableTrivia[Math.floor(Math.random() * availableTrivia.length)];
-        const reward = Math.floor(Math.random() * 500) + 1000; // Ranges 1k to 1.5k
-        activeEvent = { answer: trivia.a.toLowerCase(), reward, type: "TRIVIA", id: trivia.id };
-
-        const embed = new EmbedBuilder()
-            .setTitle("🧠 MB ACADEMIC TRIVIA")
-            .setColor("#00fbff")
-            .setDescription(`**QUESTION:** ${trivia.q}\n\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`)
-            .setFooter({ text: "Checkout the chicken bot aswell by using m help" });
-        await channel.send({ embeds: [embed] });
-
-    } else {
-        triggerRegularDrop(channel);
-    }
-}
-
-async function triggerRegularDrop(channel) {
-    const reward = Math.floor(Math.random() * 130) + 200; // Ranges 200 to 330
+async function triggerDrop(channel) {
+    const reward = Math.floor(Math.random() * 130) + 200;
     const code = "MB" + Math.floor(Math.random() * 9999);
     activeEvent = { answer: code.toLowerCase(), reward, type: "DROP" };
-
-    const embed = new EmbedBuilder()
-        .setTitle("💫 MB STARS DROP")
-        .setColor(theme)
-        .setDescription(`Type the code fast!\n\n📝 Code: **${code}**\n💰 Reward: **${reward} 💫 Stars**`)
-        .setFooter({ text: "For help type ;help" });
+    const embed = new EmbedBuilder().setTitle("💫 MB STARS DROP").setColor("#5865F2").setDescription(`📝 Code: **${code}**\n💰 Reward: **${reward} 💫 Stars**`).setFooter({ text: "Use ;help for info" });
     await channel.send({ embeds: [embed] });
 }
 
+async function triggerTrivia(channel) {
+    let stats = await TriviaStats.findOne() || await TriviaStats.create({ usedIds: [] });
+    const availableTrivia = triviaPool.filter(t => !stats.usedIds.includes(t.id));
+    if (availableTrivia.length === 0) return channel.send("❌ Out of trivia! Reset DB to restart.");
+    const trivia = availableTrivia[Math.floor(Math.random() * availableTrivia.length)];
+    const reward = Math.floor(Math.random() * 500) + 1000;
+    activeEvent = { answer: trivia.a.toLowerCase(), reward, type: "TRIVIA", id: trivia.id };
+    const embed = new EmbedBuilder().setTitle("🧠 MB ACADEMIC TRIVIA").setColor("#00fbff").setDescription(`**QUESTION:** ${trivia.q}\n\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`).setFooter({ text: "Checkout the chicken bot aswell by using m help" });
+    await channel.send({ embeds: [embed] });
+}
+
+async function triggerJackpot(channel) {
+    const reward = Math.floor(Math.random() * 37000) + 30000;
+    const code = "MB-JACKPOT-" + Math.floor(Math.random() * 99);
+    activeEvent = { answer: code.toLowerCase(), reward, type: "JACKPOT" };
+    const embed = new EmbedBuilder().setTitle("🔥 MEGA JACKPOT DROP 🔥").setColor("#ff0000").setDescription(`📝 Code: **${code}**\n💰 Reward: **${reward.toLocaleString()} 💫 Stars**`).setFooter({ text: "Use ;help for info" });
+    await channel.send({ embeds: [embed] });
+}
+
+// ================= INTERACTION HANDLER =================
+client.on("interactionCreate", async (i) => {
+    if (i.isChatInputCommand()) {
+        if (i.user.id !== OWNER_ID) return i.reply({ content: "❌ Only the owner can trigger events.", ephemeral: true });
+        const channel = client.channels.cache.get(process.env.GAME_CHANNEL_ID);
+        if (i.commandName === 'drop') await triggerDrop(channel);
+        if (i.commandName === 'trivia') await triggerTrivia(channel);
+        if (i.commandName === 'jackpot') await triggerJackpot(channel);
+        return i.reply({ content: "✅ Event Triggered.", ephemeral: true });
+    }
+
+    if (i.isButton()) {
+        const prices = { buy_shield: 2500, buy_mutator: 5000, buy_relic: 20000, buy_diamond: 50000, buy_hole: 500000 };
+        const cost = prices[i.customId];
+        if (!cost) return;
+        let user = await User.findOne({ userId: i.user.id }) || await User.create({ userId: i.user.id });
+        if (user.stars < cost) return i.reply({ content: "❌ Not enough stars!", ephemeral: true });
+        user.stars -= cost;
+        user.inventory.push(i.component.label);
+        await user.save();
+        return i.reply({ content: `✅ Purchased **${i.component.label}**!`, ephemeral: true });
+    }
+});
+
 // ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (m) => {
-    if (m.author.bot || !m.guild) return;
+    if (m.author.bot) return;
 
     if (activeEvent && m.content.toLowerCase().includes(activeEvent.answer)) {
         const { reward, type, id } = activeEvent;
-        activeEvent = null; 
-
-        if (type === "TRIVIA") {
-            await TriviaStats.updateOne({}, { $push: { usedIds: id } });
-        }
-
+        activeEvent = null;
+        if (type === "TRIVIA") await TriviaStats.updateOne({}, { $push: { usedIds: id } });
         let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
         user.stars += reward;
         await user.save();
-
-        const winEmbed = new EmbedBuilder()
-            .setColor("Green")
-            .setDescription(type === "TRIVIA" 
-                ? `🧠 **${m.author.username}** correctly answered! **+${reward.toLocaleString()} 💫 Stars**` 
-                : `✅ **${m.author.username}** claimed the stars! **+${reward.toLocaleString()} 💫 Stars**`)
-            .setFooter({ text: type === "TRIVIA" ? "Checkout the chicken bot aswell by using m help" : "For help type ;help" });
-
-        return m.reply({ embeds: [winEmbed] });
+        return m.reply({ embeds: [new EmbedBuilder().setColor("Green").setDescription(`✅ **${m.author.username}** correctly claimed **+${reward.toLocaleString()} 💫 Stars**!`)] });
     }
 
     if (!m.content.startsWith(";")) return;
-    const args = m.content.slice(1).trim().split(/ +/);
-    const cmd = args.shift().toLowerCase();
+    const cmd = m.content.slice(1).trim().toLowerCase();
 
     if (cmd === "help") {
         const helpEmbed = new EmbedBuilder()
-            .setTitle("🔱 MB Stars | God-Mode System")
+            .setTitle("🔱 MB Stars | Premium Engagement")
             .setColor(theme)
-            .setDescription("The ultimate engagement system. Earn **💫 MB Stars** by being the fastest.")
+            .setDescription("The ultimate scholastic reward system. Collect 💫 stars to rule the server.")
             .addFields(
-                { name: "🎯 Economy", value: "Drops: 330 Max\nTrivia: 1.5k Max\nJackpot: 67k Max", inline: false },
-                { name: "💸 Commands", value: "`;bal` - Your Balance\n`;shop` - Premium Items", inline: true }
-            );
+                { name: "🎮 How to Play", value: "Be active in the server. Be the first to claim codes or answer trivia questions to earn MB Stars.", inline: false },
+                { name: "📜 Public Commands", value: "`;bal` - View your balance\n`;shop` - Browse the aisles\n`;help` - This menu", inline: true },
+                { name: "💎 Rewards", value: "Drops: 330 Max\nTrivia: 1.5k Max\nJackpot: 67k Max", inline: true }
+            )
+            .setFooter({ text: "Checkout the chicken bot aswell by using m help" });
         return m.reply({ embeds: [helpEmbed] });
     }
 
-    if (cmd === "bal" || cmd === "stars") {
+    if (cmd === "bal") {
         let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
         return m.reply(`💳 **${m.author.username}**, you have **${user.stars.toLocaleString()} 💫 MB Stars**.`);
     }
 
     if (cmd === "shop") {
-        const shopEmbed = new EmbedBuilder()
-            .setTitle("🛒 MB STARS PREMIUM VAULT")
-            .setColor(theme)
-            .addFields(
-                { name: "🛡️ Star Shield", value: "2,500 💫", inline: true },
-                { name: "🧬 XP Mutator", value: "5,000 💫", inline: true },
-                { name: "🛰️ Satellite", value: "8,500 💫", inline: true },
-                { name: "🧪 Growth Serum", value: "12,000 💫", inline: true },
-                { name: "🔮 Ancient Relic", value: "20,000 💫", inline: true },
-                { name: "🏎️ Velocity Engine", value: "35,000 💫", inline: true },
-                { name: "💎 Void Diamond", value: "50,000 💫", inline: true },
-                { name: "🌌 Galaxy Map", value: "75,000 💫", inline: true },
-                { name: "👑 Star Crown", value: "150,000 💫", inline: true },
-                { name: "🌀 Black Hole", value: "500,000 💫", inline: true }
-            );
-
-        const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("buy_shield").setLabel("Shield").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("buy_mutator").setLabel("Mutator").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("buy_relic").setLabel("Relic").setStyle(ButtonStyle.Primary)
+        const shopEmbed = new EmbedBuilder().setTitle("Browse the aisles...").setColor(theme)
+            .setDescription("🛡️ **Star Shield**\n💫 2,500\n\n🧬 **XP Mutator**\n💫 5,000\n\n🔮 **Ancient Relic**\n💫 20,000\n\n💎 **Void Diamond**\n💫 50,000\n\n🌀 **Black Hole**\n💫 500,000");
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("buy_shield").setLabel("Shield").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_mutator").setLabel("Mutator").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_relic").setLabel("Relic").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_diamond").setLabel("Diamond").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_hole").setLabel("Black Hole").setStyle(ButtonStyle.Secondary)
         );
-
-        const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("buy_diamond").setLabel("Diamond").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId("buy_hole").setLabel("Black Hole").setStyle(ButtonStyle.Danger)
-        );
-
-        return m.reply({ embeds: [shopEmbed], components: [row1, row2] });
+        return m.reply({ embeds: [shopEmbed], components: [row] });
     }
-});
-
-client.on("interactionCreate", async (i) => {
-    if (!i.isButton()) return;
-    const prices = {
-        buy_shield: 2500, buy_mutator: 5000, buy_relic: 20000, 
-        buy_diamond: 50000, buy_hole: 500000
-    };
-    const cost = prices[i.customId];
-    if (!cost) return;
-
-    let user = await User.findOne({ userId: i.user.id }) || await User.create({ userId: i.user.id });
-    if (user.stars < cost) return i.reply({ content: `❌ You need more 💫 stars!`, ephemeral: true });
-
-    user.stars -= cost;
-    user.inventory.push(i.component.label);
-    await user.save();
-    await i.reply({ content: `✅ Purchased **${i.component.label}**!`, ephemeral: true });
 });
 
 mongoose.connect(process.env.MONGO_URI).then(() => client.login(process.env.TOKEN));
