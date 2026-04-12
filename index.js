@@ -132,7 +132,7 @@ const triviaPool = [
     { id: 100, q: "Misc: What is the largest planet in our solar system?", a: "jupiter" }
 ];
 
-// ================= [ FORCED SLASH PURGE & REGISTER ] =================
+// ================= [ INSTANT GUILD REGISTRATION ] =================
 const slashCommands = [
     new SlashCommandBuilder().setName('drop').setDescription('Owner: Trigger Star Drop'),
     new SlashCommandBuilder().setName('trivia').setDescription('Owner: Trigger Unique Trivia'),
@@ -143,11 +143,17 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 (async () => {
     try {
-        console.log("🧨 PURGING OLD COMMAND CACHE...");
+        console.log("🧨 WIPING STUCK GLOBAL COMMANDS...");
+        // This clears global cache so they stop appearing everywhere
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
-        console.log("✅ CACHE WIPED. REGISTERING NEW...");
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: slashCommands });
-        console.log("👑 OWNER COMMANDS READY.");
+        
+        console.log("✅ GLOBAL WIPED. REGISTERING GUILD COMMANDS...");
+        // This makes them appear INSTANTLY in your specific server
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), 
+            { body: slashCommands }
+        );
+        console.log("👑 GUILD COMMANDS ACTIVE.");
     } catch (err) { console.error(err); }
 })();
 
