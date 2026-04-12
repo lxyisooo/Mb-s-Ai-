@@ -12,12 +12,12 @@ const client = new Client({
     ]
 });
 
-// ================= [ CONFIGURATION ] =================
-const OWNER_ID = "1451533934130364467"; // <--- CHANGE THIS
-const theme = "#2b2d31"; 
-let activeEvent = null; 
+// ================= [ CONFIG ] =================
+const OWNER_ID = "1451533934130364467"; 
+const THEME = "#2b2d31"; 
+let activeEvent = null;
 
-// ================= [ DATABASE MODELS ] =================
+// ================= [ DATABASE ] =================
 const User = mongoose.model("User", new mongoose.Schema({
     userId: String,
     stars: { type: Number, default: 0 },
@@ -132,40 +132,142 @@ const triviaPool = [
     { id: 100, q: "Misc: What is the largest planet in our solar system?", a: "jupiter" }
 ];
 
-// ================= [ SLASH COMMAND REFRESH ] =================
-const commands = [
-    new SlashCommandBuilder().setName('drop').setDescription('Admin: Trigger Star Drop'),
-    new SlashCommandBuilder().setName('trivia').setDescription('Admin: Trigger Unique Trivia'),
-    new SlashCommandBuilder().setName('jackpot').setDescription('Admin: Trigger Mega Jackpot')
+// ================= [ FORCED SLASH PURGE & REGISTER ] =================
+const slashCommands = [
+    new SlashCommandBuilder().setName('drop').setDescription('Owner: Trigger Star Drop'),
+    new SlashCommandBuilder().setName('trivia').setDescription('Owner: Trigger Unique Trivia'),
+    new SlashCommandBuilder().setName('jackpot').setDescription('Owner: Trigger Mega Jackpot')
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
 (async () => {
     try {
-        console.log('🔄 Cleaning old cache and registering new Owner Slash Commands...');
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] }); 
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    } catch (e) { console.error(e); }
+        console.log("🧨 PURGING OLD COMMAND CACHE...");
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
+        console.log("✅ CACHE WIPED. REGISTERING NEW...");
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: slashCommands });
+        console.log("👑 OWNER COMMANDS READY.");
+    } catch (err) { console.error(err); }
 })();
 
-// ================= [ EVENT ENGINE ] =================
+// ================= [ CORE FUNCTIONS ] =================
 
-async function triggerDrop(channel) {
-    const reward = Math.floor(Math.random() * 130) + 200;
-    const code = "MB" + Math.floor(Math.random() * 9999);
-    activeEvent = { answer: code.toLowerCase(), reward, type: "DROP" };
-    
-    const embed = new EmbedBuilder()
-        .setAuthor({ name: "STARS DROP", iconURL: "https://i.imgur.com/8N95uXF.png" })
-        .setColor("#5865F2")
-        .setDescription(
-http://googleusercontent.com/immersive_entry_chip/0
-http://googleusercontent.com/immersive_entry_chip/1
+async function sendEvent(type, channel) {
+    if (!channel) return;
+    const embed = new EmbedBuilder().setTimestamp();
 
-### 🎯 Pro-Tip for your Slash Commands:
-Once you deploy this, the old slash commands might still show up for a few minutes in your Discord client because of its local cache. To fix it immediately:
-1.  **Fully close Discord** (and the mobile app).
-2.  **Restart the bot.**
-3.  **Re-open Discord.**
+    if (type === 'drop') {
+        const reward = Math.floor(Math.random() * 131) + 200;
+        const code = "MB-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+        activeEvent = { answer: code.toLowerCase(), reward, type: "DROP" };
+        embed.setAuthor({ name: "STARS DROP", iconURL: "https://i.imgur.com/8N95uXF.png" })
+             .setColor("#5865f2")
+             .setDescription(`\`\`\`fix\nCODE: ${code}\nVALUE: ${reward} 💫\n\`\`\``);
+    } 
+    else if (type === 'trivia') {
+        let stats = await TriviaStats.findOne() || await TriviaStats.create({ usedIds: [] });
+        const available = triviaPool.filter(t => !stats.usedIds.includes(t.id));
+        if (available.length === 0) return channel.send("⚠️ Trivia pool exhausted.");
+        const t = available[Math.floor(Math.random() * available.length)];
+        const reward = Math.floor(Math.random() * 501) + 1000;
+        activeEvent = { answer: t.a.toLowerCase(), reward, type: "TRIVIA", id: t.id };
+        embed.setAuthor({ name: "TRIVIA CHALLENGE", iconURL: "https://i.imgur.com/u5uHqPn.png" })
+             .setColor("#00fbff")
+             .setDescription(`**${t.q}**\n\n> 💰 **Reward:** \`${reward.toLocaleString()} 💫 Stars\``);
+    }
+    else if (type === 'jackpot') {
+        const reward = Math.floor(Math.random() * 37001) + 30000;
+        const code = "JACKPOT-" + Math.floor(100 + Math.random() * 900);
+        activeEvent = { answer: code.toLowerCase(), reward, type: "JACKPOT" };
+        embed.setAuthor({ name: "MEGA JACKPOT", iconURL: "https://i.imgur.com/8N95uXF.png" })
+             .setColor("#ff0000")
+             .setDescription(`\`\`\`fix\nCODE: ${code}\nVALUE: ${reward.toLocaleString()} 💫\n\`\`\``);
+    }
+    await channel.send({ embeds: [embed] });
+}
 
-They will now be replaced by your locked `/drop`, `/trivia`, and `/jackpot`. 😈🔥💫
+// ================= [ EVENT HANDLERS ] =================
+
+client.on("interactionCreate", async (i) => {
+    if (i.isChatInputCommand()) {
+        if (i.user.id !== OWNER_ID) return i.reply({ content: "Unauthorized.", ephemeral: true });
+        const channel = client.channels.cache.get(process.env.GAME_CHANNEL_ID);
+        await sendEvent(i.commandName, channel);
+        return i.reply({ content: "✅ Event Triggered.", ephemeral: true });
+    }
+
+    if (i.isButton()) {
+        const prices = { buy_shield: 2500, buy_mutator: 5000, buy_relic: 20000, buy_diamond: 50000, buy_hole: 500000 };
+        const cost = prices[i.customId];
+        let user = await User.findOne({ userId: i.user.id }) || await User.create({ userId: i.user.id });
+        if (user.stars < cost) return i.reply({ content: "❌ You cannot afford this.", ephemeral: true });
+        user.stars -= cost;
+        user.inventory.push(i.component.label);
+        await user.save();
+        return i.reply({ content: `✅ Purchased **${i.component.label}**!`, ephemeral: true });
+    }
+});
+
+client.on("messageCreate", async (m) => {
+    if (m.author.bot) return;
+
+    if (activeEvent && m.content.toLowerCase().includes(activeEvent.answer)) {
+        const { reward, type, id } = activeEvent;
+        activeEvent = null;
+        if (type === "TRIVIA") await TriviaStats.updateOne({}, { $push: { usedIds: id } });
+        let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
+        user.stars += reward;
+        await user.save();
+        return m.reply({ embeds: [new EmbedBuilder().setColor("#43b581").setDescription(`✨ **${m.author.username}** claimed **+${reward.toLocaleString()} 💫 Stars**!`)] });
+    }
+
+    if (!m.content.startsWith(";")) return;
+    const cmd = m.content.slice(1).trim().toLowerCase();
+
+    // PREMIUM HELP UI
+    if (cmd === "help") {
+        const help = new EmbedBuilder()
+            .setAuthor({ name: "SYSTEM OVERVIEW", iconURL: m.guild.iconURL() })
+            .setColor(THEME)
+            .setDescription(
+                "### 🔱 MB STARS ECONOMY\nThe official server engagement system.\n\n" +
+                "**`🎮` PARTICIPATION**\nFirst person to enter a Drop code or answer a Trivia question wins the prize.\n\n" +
+                "**`📜` COMMANDS**\n┣ `;bal` — View your Star balance\n┣ `;shop` — Access the premium vault\n┗ `;help` — Open this documentation"
+            )
+            .setFooter({ text: "Checkout the chicken bot aswell by using m help" });
+        return m.reply({ embeds: [help] });
+    }
+
+    // PREMIUM SHOP UI (CLEAN AISLE)
+    if (cmd === "shop") {
+        const shop = new EmbedBuilder()
+            .setAuthor({ name: "VAULT | BROWSE AISLES", iconURL: "https://i.imgur.com/u5uHqPn.png" })
+            .setColor(THEME)
+            .setDescription(
+                "🛡️ **Star Shield** — `2,500 💫` \n*Prevents your Stars from being reset during server events.*\n\n" +
+                "🧬 **XP Mutator** — `5,000 💫` \n*A rare genetic modification that permanently alters your profile's rarity.*\n\n" +
+                "🔮 **Ancient Relic** — `20,000 💫` \n*A mysterious artifact containing a hidden piece of server lore.*\n\n" +
+                "💎 **Void Diamond** — `50,000 💫` \n*The ultimate prestige item for the wealthiest users in the ecosystem.*\n\n" +
+                "🌀 **Black Hole** — `500,000 💫` \n*A high-risk chaotic item that creates a server-wide star surge.*"
+            );
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("buy_shield").setLabel("Buy Shield").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_mutator").setLabel("Buy Mutator").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_relic").setLabel("Buy Relic").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_diamond").setLabel("Buy Diamond").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("buy_hole").setLabel("Buy Black Hole").setStyle(ButtonStyle.Danger)
+        );
+        return m.reply({ embeds: [shop], components: [row] });
+    }
+
+    if (cmd === "bal") {
+        let user = await User.findOne({ userId: m.author.id }) || await User.create({ userId: m.author.id });
+        return m.reply(`💳 **${m.author.username}**, you have **${user.stars.toLocaleString()} 💫 Stars**.`);
+    }
+});
+
+mongoose.connect(process.env.MONGO_URI).then(() => {
+    console.log("📂 DATABASE READY.");
+    client.login(process.env.TOKEN);
+});
