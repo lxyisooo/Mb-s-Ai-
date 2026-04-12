@@ -1,7 +1,7 @@
 {
   "name": "mb-stars-bot",
-  "version": "1.2.0",
-  "description": "Premium Engagement Bot with Strict Economy Limits",
+  "version": "2.0.0",
+  "description": "Premium MB Stars System | 100+ Trivia | Owner Slash Controls",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
