@@ -1,17 +1,11 @@
 {
-  "name": "mb-stars-bot",
+  "name": "mb-stars-system",
   "version": "2.0.0",
-  "description": "Premium MB Stars System | 100+ Trivia | Owner Slash Controls",
+  "description": "Premium Economy & Owner Slash System",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
     "discord.js": "^14.14.1",
     "mongoose": "^8.1.1",
     "dotenv": "^16.4.1"
-  },
-  "engines": {
-    "node": "18.x"
   }
 }
