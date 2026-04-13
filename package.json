@@ -1,17 +1,16 @@
-{
+l{
   "name": "wimble-pro-omega",
-  "version": "1.0.0",
-  "description": "The ultimate OwO-style RPG bot powered by mb cash",
+  "version": "2.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "dependencies": {
-    "discord.js": "^14.14.1",
-    "mongoose": "^8.2.1",
-    "dotenv": "^16.4.5"
-  },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "mongoose": "^8.0.0",
+    "dotenv": "^16.4.0"
   }
 }
