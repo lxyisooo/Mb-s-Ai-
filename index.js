@@ -9,7 +9,7 @@ const {
 const mongoose = require("mongoose");
 require("dotenv").config();
 
-const PREFIX = "mb ";
+const PREFIX = "mb";
 
 const client = new Client({
   intents: [
@@ -19,163 +19,176 @@ const client = new Client({
   ]
 });
 
-/* ---------------- DATABASE ---------------- */
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("🍃 MongoDB connected"))
-  .catch(console.error);
+/* ───── DB ───── */
+mongoose.connect(process.env.MONGO_URI);
 
 const userSchema = new mongoose.Schema({
   userId: String,
   cash: { type: Number, default: 1000 },
   luck: { type: Number, default: 1 },
-  inv: { type: [String], default: [] },
-  accepted: { type: Boolean, default: false }
+  accepted: { type: Boolean, default: false },
+
+  ship: { type: String, default: "None" },
+
+  /* 🐾 PET SYSTEM */
+  pet: {
+    name: { type: String, default: null },
+    level: { type: Number, default: 0 },
+    hunger: { type: Number, default: 100 }
+  },
+
+  /* 🏅 BADGES */
+  badges: { type: [String], default: [] }
 });
 
 const User = mongoose.model("User", userSchema);
 
-/* ---------------- READY ---------------- */
+/* ───── READY ───── */
 client.once("ready", () => {
-  console.log(`🚀 ${client.user.tag} online`);
+  console.log(`🚀 House of MB online`);
 });
 
-/* ---------------- HELP EMBEDS ---------------- */
-const helpEmbeds = {
-  main: new EmbedBuilder()
-    .setTitle("📘 Wimble Help")
-    .setDescription("Choose a category below")
-    .setColor("#5865F2"),
+/* ───── HELP ───── */
+const help = new EmbedBuilder()
+  .setTitle("🏠 House of MB Help")
+  .setDescription(
+    "**💰 Economy**\n`mb hunt` `mb slots`\n\n" +
+    "**🐾 Pets**\n`mb adopt <name>`\n`mb pet`\n`mb feed`\n\n" +
+    "**💞 Social**\n`mb ship @user`\n\n" +
+    "**📊 Profile**\n`mb profile`"
+  )
+  .setColor("#ff7a18");
 
-  economy: new EmbedBuilder()
-    .setTitle("💰 Economy Commands")
-    .setDescription(
-      "`mb hunt` – hunt animals\n" +
-      "`mb work` – earn money\n" +
-      "`mb daily` – daily reward\n" +
-      "`mb crime` – risky money\n" +
-      "`mb slots <amt>` – gamble"
-    )
-    .setColor("Green"),
+/* ───── CORE ───── */
+client.on("messageCreate", async msg => {
+  if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
 
-  social: new EmbedBuilder()
-    .setTitle("💍 Social Commands")
-    .setDescription(
-      "`mb marry @user`\n" +
-      "`mb divorce`\n" +
-      "`mb profile`"
-    )
-    .setColor("Pink"),
+  const args = msg.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift()?.toLowerCase();
 
-  utility: new EmbedBuilder()
-    .setTitle("🧰 Utility Commands")
-    .setDescription(
-      "`mb help`\n" +
-      "`mb rules`\n" +
-      "`mb inv`\n" +
-      "`mb lb`"
-    )
-    .setColor("Blue"),
+  let u = await User.findOne({ userId: msg.author.id });
+  if (!u) u = await User.create({ userId: msg.author.id });
 
-  fun: new EmbedBuilder()
-    .setTitle("🎮 Fun & Extras")
-    .setDescription(
-      "`mb shop`\n" +
-      "`mb buy <item>`\n" +
-      "`mb zoo`"
-    )
-    .setColor("Orange")
-};
-
-/* ---------------- HELP BUTTONS ---------------- */
-const helpRow = new ActionRowBuilder().addComponents(
-  new ButtonBuilder()
-    .setCustomId("help_main")
-    .setLabel("🏠 Home")
-    .setStyle(ButtonStyle.Secondary),
-  new ButtonBuilder()
-    .setCustomId("help_economy")
-    .setLabel("💰 Economy")
-    .setStyle(ButtonStyle.Success),
-  new ButtonBuilder()
-    .setCustomId("help_social")
-    .setLabel("💍 Social")
-    .setStyle(ButtonStyle.Primary),
-  new ButtonBuilder()
-    .setCustomId("help_utility")
-    .setLabel("🧰 Utility")
-    .setStyle(ButtonStyle.Secondary),
-  new ButtonBuilder()
-    .setCustomId("help_fun")
-    .setLabel("🎮 Fun")
-    .setStyle(ButtonStyle.Secondary)
-);
-
-/* ---------------- MESSAGE HANDLER ---------------- */
-client.on("messageCreate", async message => {
-  if (!message.content.startsWith(PREFIX) || message.author.bot) return;
-
-  const cmd = message.content.slice(PREFIX.length).trim().toLowerCase();
-
-  let user = await User.findOne({ userId: message.author.id });
-  if (!user) user = await User.create({ userId: message.author.id });
-
-  /* ---- HELP v2 ---- */
-  if (cmd === "help") {
-    return message.reply({
-      embeds: [helpEmbeds.main],
-      components: [helpRow]
-    });
+  if (!u.accepted && cmd !== "rules") {
+    return msg.reply("⚠️ Accept rules first: `mb rules`");
   }
 
-  /* ---- RULES ---- */
+  /* ───── RULES ───── */
   if (cmd === "rules") {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("accept_rules")
+        .setCustomId("accept")
         .setLabel("Accept Rules")
         .setStyle(ButtonStyle.Success)
     );
 
-    return message.reply({
-      content: "📜 **Rules**\nNo spam • No abuse • Be cool",
+    return msg.reply({
+      content: "📜 House of MB Rules\nBe respectful • No abuse",
       components: [row]
     });
   }
 
-  if (!user.accepted) {
-    return message.reply("⚠️ Accept the rules first: `mb rules`");
+  /* ───── HELP ───── */
+  if (cmd === "help") return msg.reply({ embeds: [help] });
+
+  /* ───── HUNT (PET SYNERGY) ───── */
+  if (cmd === "hunt") {
+    const gain = Math.floor(Math.random() * 200) + 50;
+
+    let bonus = 0;
+    if (u.pet.name) bonus = u.pet.level * 10;
+
+    u.cash += gain + bonus;
+    await u.save();
+
+    return msg.reply(
+      `🏹 You earned **${gain} MB**` +
+      (bonus ? ` + 🐾 pet bonus **${bonus}**` : "")
+    );
   }
 
-  // (Your existing commands continue here)
+  /* ───── ADOPT PET ───── */
+  if (cmd === "adopt") {
+    const name = args.join(" ");
+    if (!name) return msg.reply("🐾 Give your pet a name!");
+
+    u.pet.name = name;
+    u.pet.level = 1;
+    u.pet.hunger = 100;
+
+    u.badges.push("🐾 Pet Owner");
+
+    await u.save();
+
+    return msg.reply(`🐾 You adopted **${name}**!`);
+  }
+
+  /* ───── PET INFO ───── */
+  if (cmd === "pet") {
+    if (!u.pet.name) return msg.reply("❌ No pet yet!");
+
+    return msg.reply(
+      `🐾 **${u.pet.name}**\n` +
+      `Level: ${u.pet.level}\n` +
+      `Hunger: ${u.pet.hunger}%`
+    );
+  }
+
+  /* ───── FEED PET ───── */
+  if (cmd === "feed") {
+    if (!u.pet.name) return msg.reply("❌ No pet!");
+
+    u.pet.hunger = Math.min(100, u.pet.hunger + 25);
+    u.pet.level += 1;
+
+    await u.save();
+
+    return msg.reply(`🍖 You fed **${u.pet.name}**! Level up +1`);
+  }
+
+  /* ───── SHIP ───── */
+  if (cmd === "ship") {
+    const t = msg.mentions.users.first();
+    if (!t) return msg.reply("💞 Mention someone!");
+
+    const p = Math.floor(Math.random() * 101);
+
+    u.ship = t.username;
+    await u.save();
+
+    return msg.reply(`💘 Ship: ${p}% between you and ${t.username}`);
+  }
+
+  /* ───── PROFILE V2 ───── */
+  if (cmd === "profile") {
+    const embed = new EmbedBuilder()
+      .setTitle(`🏠 ${msg.author.username}`)
+      .addFields(
+        { name: "💰 Cash", value: `${u.cash}`, inline: true },
+        { name: "🐾 Pet", value: u.pet.name || "None", inline: true },
+        { name: "📊 Level", value: `${u.pet.level}`, inline: true },
+        { name: "🏅 Badges", value: u.badges.join(", ") || "None" }
+      )
+      .setColor("#ff7a18");
+
+    return msg.reply({ embeds: [embed] });
+  }
 });
 
-/* ---------------- BUTTON HANDLER ---------------- */
+/* ───── BUTTONS ───── */
 client.on("interactionCreate", async i => {
-  if (i.isButton()) {
+  if (!i.isButton()) return;
 
-    /* ---- RULE ACCEPT ---- */
-    if (i.customId === "accept_rules") {
-      await User.findOneAndUpdate(
-        { userId: i.user.id },
-        { accepted: true }
-      );
+  if (i.customId === "accept") {
+    await User.findOneAndUpdate(
+      { userId: i.user.id },
+      { accepted: true }
+    );
 
-      return i.update({
-        content: "✅ Rules accepted! Type `mb help`",
-        components: []
-      });
-    }
-
-    /* ---- HELP NAV ---- */
-    if (i.customId.startsWith("help_")) {
-      const page = i.customId.split("_")[1];
-      const embed = helpEmbeds[page] || helpEmbeds.main;
-
-      return i.update({
-        embeds: [embed],
-        components: [helpRow]
-      });
-    }
+    return i.update({
+      content: "✅ Welcome to House of MB 🏠",
+      components: []
+    });
   }
 });
 
