@@ -1,13 +1,17 @@
 {
-  "name": "wimble-gambling-pro",
-  "version": "2.5.0",
-  "description": "All-in-one Gambling and Social Bot",
+  "name": "wimble-pro-omega",
+  "version": "1.0.0",
+  "description": "The ultimate OwO-style RPG bot powered by mb cash",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
+    "mongoose": "^8.2.1",
     "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
