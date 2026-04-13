@@ -25,41 +25,45 @@ mongoose.connect(process.env.MONGO_URI);
 const userSchema = new mongoose.Schema({
   userId: String,
   cash: { type: Number, default: 1000 },
-  luck: { type: Number, default: 1 },
-  accepted: { type: Boolean, default: false },
+  bank: { type: Number, default: 0 },
 
-  ship: { type: String, default: "None" },
+  multiplier: { type: Number, default: 1 },
 
-  /* 🐾 PET SYSTEM */
-  pet: {
-    name: { type: String, default: null },
-    level: { type: Number, default: 0 },
-    hunger: { type: Number, default: 100 }
-  },
+  prestige: { type: Number, default: 0 },
 
-  /* 🏅 BADGES */
-  badges: { type: [String], default: [] }
+  lastDaily: { type: Number, default: 0 },
+  lastCrime: { type: Number, default: 0 },
+
+  accepted: { type: Boolean, default: false }
 });
 
 const User = mongoose.model("User", userSchema);
 
+/* ───── COOLDOWN ENGINE ───── */
+function cd(user, field, time) {
+  const now = Date.now();
+  if (now < user[field]) return Math.ceil((user[field] - now) / 1000);
+  user[field] = now + time;
+  return false;
+}
+
 /* ───── READY ───── */
 client.once("ready", () => {
-  console.log(`🚀 House of MB online`);
+  console.log("🏠 House of MB ONLINE");
 });
 
-/* ───── HELP ───── */
+/* ───── HELP (CLEAN UI) ───── */
 const help = new EmbedBuilder()
-  .setTitle("🏠 House of MB Help")
+  .setTitle("🏠 House of MB")
   .setDescription(
-    "**💰 Economy**\n`mb hunt` `mb slots`\n\n" +
-    "**🐾 Pets**\n`mb adopt <name>`\n`mb pet`\n`mb feed`\n\n" +
-    "**💞 Social**\n`mb ship @user`\n\n" +
-    "**📊 Profile**\n`mb profile`"
+    "**💰 Economy**\n`mb bal` `mb daily`\n\n" +
+    "**💀 Risk**\n`mb crime`\n\n" +
+    "**🎰 Gambling**\n`mb slots <bet>`\n\n" +
+    "**📈 Progression**\n`mb prestige`\n"
   )
   .setColor("#ff7a18");
 
-/* ───── CORE ───── */
+/* ───── MESSAGE HANDLER ───── */
 client.on("messageCreate", async msg => {
   if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
 
@@ -69,126 +73,91 @@ client.on("messageCreate", async msg => {
   let u = await User.findOne({ userId: msg.author.id });
   if (!u) u = await User.create({ userId: msg.author.id });
 
-  if (!u.accepted && cmd !== "rules") {
-    return msg.reply("⚠️ Accept rules first: `mb rules`");
+  const mult = u.multiplier;
+
+  /* ───── BALANCE ───── */
+  if (cmd === "bal" || cmd === "balance") {
+    return msg.reply(
+      `💰 **Balance:** ${u.cash} MB Cash\n🏦 Bank: ${u.bank}\n📈 Prestige: ${u.prestige}`
+    );
   }
 
-  /* ───── RULES ───── */
-  if (cmd === "rules") {
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("accept")
-        .setLabel("Accept Rules")
-        .setStyle(ButtonStyle.Success)
-    );
+  /* ───── DAILY ───── */
+  if (cmd === "daily") {
+    const wait = cd(u, "lastDaily", 86400000);
+    if (wait) return msg.reply(`⏳ Come back in ${wait}s`);
 
-    return msg.reply({
-      content: "📜 House of MB Rules\nBe respectful • No abuse",
-      components: [row]
-    });
+    const reward = Math.floor(1000 * mult);
+    u.cash += reward;
+    await u.save();
+
+    return msg.reply(`🎁 Daily claimed: **+${reward} MB Cash**`);
+  }
+
+  /* ───── CRIME ───── */
+  if (cmd === "crime") {
+    const wait = cd(u, "lastCrime", 60000);
+    if (wait) return msg.reply(`⏳ Wait ${wait}s`);
+
+    const success = Math.random() < 0.55;
+
+    if (success) {
+      const win = Math.floor(800 * mult);
+      u.cash += win;
+      await u.save();
+      return msg.reply(`💀 Crime SUCCESS! +${win} MB Cash`);
+    } else {
+      const loss = Math.floor(400 * mult);
+      u.cash -= loss;
+      await u.save();
+      return msg.reply(`🚨 You got caught! -${loss} MB Cash`);
+    }
+  }
+
+  /* ───── SLOTS (GAMBLING CORE) ───── */
+  if (cmd === "slots") {
+    const bet = parseInt(args[0]);
+    if (!bet || bet < 10 || bet > u.cash)
+      return msg.reply("❌ `mb slots <amount>`");
+
+    const icons = ["🍒", "💎", "🔥"];
+    const roll = icons.map(() => icons[Math.floor(Math.random() * icons.length)]);
+    const win = roll.every(v => v === roll[0]);
+
+    const payout = win ? bet * 4 : -bet;
+
+    u.cash += payout;
+    await u.save();
+
+    return msg.reply(
+      `🎰 **[ ${roll.join(" | ")} ]**\n` +
+      (win ? `🔥 JACKPOT +${payout}` : `💸 LOSS ${payout}`)
+    );
+  }
+
+  /* ───── PRESTIGE ───── */
+  if (cmd === "prestige") {
+    if (u.cash < 100000) {
+      return msg.reply("❌ You need 100,000 MB Cash to prestige!");
+    }
+
+    u.cash = 1000;
+    u.bank = 0;
+    u.multiplier += 0.25;
+    u.prestige += 1;
+
+    await u.save();
+
+    return msg.reply(
+      `📈 **PRESTIGE COMPLETE!**\n` +
+      `🔥 Multiplier increased!\n` +
+      `🏆 Total Prestige: ${u.prestige}`
+    );
   }
 
   /* ───── HELP ───── */
-  if (cmd === "help") return msg.reply({ embeds: [help] });
-
-  /* ───── HUNT (PET SYNERGY) ───── */
-  if (cmd === "hunt") {
-    const gain = Math.floor(Math.random() * 200) + 50;
-
-    let bonus = 0;
-    if (u.pet.name) bonus = u.pet.level * 10;
-
-    u.cash += gain + bonus;
-    await u.save();
-
-    return msg.reply(
-      `🏹 You earned **${gain} MB**` +
-      (bonus ? ` + 🐾 pet bonus **${bonus}**` : "")
-    );
-  }
-
-  /* ───── ADOPT PET ───── */
-  if (cmd === "adopt") {
-    const name = args.join(" ");
-    if (!name) return msg.reply("🐾 Give your pet a name!");
-
-    u.pet.name = name;
-    u.pet.level = 1;
-    u.pet.hunger = 100;
-
-    u.badges.push("🐾 Pet Owner");
-
-    await u.save();
-
-    return msg.reply(`🐾 You adopted **${name}**!`);
-  }
-
-  /* ───── PET INFO ───── */
-  if (cmd === "pet") {
-    if (!u.pet.name) return msg.reply("❌ No pet yet!");
-
-    return msg.reply(
-      `🐾 **${u.pet.name}**\n` +
-      `Level: ${u.pet.level}\n` +
-      `Hunger: ${u.pet.hunger}%`
-    );
-  }
-
-  /* ───── FEED PET ───── */
-  if (cmd === "feed") {
-    if (!u.pet.name) return msg.reply("❌ No pet!");
-
-    u.pet.hunger = Math.min(100, u.pet.hunger + 25);
-    u.pet.level += 1;
-
-    await u.save();
-
-    return msg.reply(`🍖 You fed **${u.pet.name}**! Level up +1`);
-  }
-
-  /* ───── SHIP ───── */
-  if (cmd === "ship") {
-    const t = msg.mentions.users.first();
-    if (!t) return msg.reply("💞 Mention someone!");
-
-    const p = Math.floor(Math.random() * 101);
-
-    u.ship = t.username;
-    await u.save();
-
-    return msg.reply(`💘 Ship: ${p}% between you and ${t.username}`);
-  }
-
-  /* ───── PROFILE V2 ───── */
-  if (cmd === "profile") {
-    const embed = new EmbedBuilder()
-      .setTitle(`🏠 ${msg.author.username}`)
-      .addFields(
-        { name: "💰 Cash", value: `${u.cash}`, inline: true },
-        { name: "🐾 Pet", value: u.pet.name || "None", inline: true },
-        { name: "📊 Level", value: `${u.pet.level}`, inline: true },
-        { name: "🏅 Badges", value: u.badges.join(", ") || "None" }
-      )
-      .setColor("#ff7a18");
-
-    return msg.reply({ embeds: [embed] });
-  }
-});
-
-/* ───── BUTTONS ───── */
-client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-
-  if (i.customId === "accept") {
-    await User.findOneAndUpdate(
-      { userId: i.user.id },
-      { accepted: true }
-    );
-
-    return i.update({
-      content: "✅ Welcome to House of MB 🏠",
-      components: []
-    });
+  if (cmd === "help") {
+    return msg.reply({ embeds: [help] });
   }
 });
 
