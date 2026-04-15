@@ -1,6 +1,6 @@
 {
   "name": "houseofmb",
-  "version": "4.5.0",
+  "version": "9.9.9",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
