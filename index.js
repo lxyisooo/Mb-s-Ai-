@@ -74,7 +74,7 @@ client.once("ready", () => console.log("💸 HOUSE OF MB — PAY TO WIN ONLINE")
 const helpEmbed = new EmbedBuilder()
   .setTitle("🏠 House of MB — Pay To Win")
   .setDescription(
-    "**💰 Economy**\n`mb bal` `mb daily` `mb work`\n\n" +
+    "**💰 Economy**\n`mb bal` `mb daily`\n\n" +
     "**🎰 Gambling**\n`mb slots <bet>`\n\n" +
     "**💀 Crime**\n`mb crime`\n\n" +
     "**💎 Premium**\n`mb shop` `mb boost`\n\n" +
@@ -125,19 +125,6 @@ client.on("messageCreate", async msg => {
 
     return msg.reply(`🎁 Daily claimed: **+${reward} MB Cash**`);
   }
-
-  /* ───── WORK ───── */
-  if (cmd === "work") {
-    const wait = cd(u, "work", 30000);
-    if (wait) return msg.reply(`⏳ ${wait}s`);
-
-    const earn = Math.floor(600 * mult);
-    u.cash += earn;
-    await u.save();
-
-    return msg.reply(`🛠️ Earned **${earn} MB Cash**`);
-  }
-
   /* ───── CRIME ───── */
   if (cmd === "crime") {
     const wait = cd(u, "crime", 60000);
