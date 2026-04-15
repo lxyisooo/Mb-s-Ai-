@@ -1,8 +1,12 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require("discord.js");
+
 const mongoose = require("mongoose");
 require("dotenv").config();
 const cfg = require("./config");
@@ -20,158 +24,196 @@ mongoose.connect(process.env.MONGO_URI);
 /* ───── DATABASE ───── */
 const User = mongoose.model("User", new mongoose.Schema({
   userId: String,
-  cash: { type: Number, default: cfg.economy.startCash },
-  pets: { type: Array, default: [] }
-}));
-
-const Jackpot = mongoose.model("Jackpot", new mongoose.Schema({
-  userId: String,
-  amount: Number,
-  time: Number
+  cash: Number,
+  pet: Object,
+  pets: Array,
+  wins: { type: Number, default: 0 },
+  losses: { type: Number, default: 0 },
+  cooldowns: Object,
+  accepted: Boolean
 }));
 
 const Raid = mongoose.model("Raid", new mongoose.Schema({
   guildId: String,
-  bank: Number,
-  active: Boolean
+  bank: Number
 }));
 
+const Season = mongoose.model("Season", new mongoose.Schema({
+  start: Number,
+  end: Number
+}));
+
+/* ───── NPC AI RESPONSE SYSTEM 🧠 */
+const npc = [
+  "The dealer eyes you suspiciously...",
+  "A gambler whispers: 'today feels lucky...'",
+  "The economy shifts slightly...",
+  "A pet growls in the distance...",
+  "The bank security weakens for a moment..."
+];
+
+const say = () => npc[Math.floor(Math.random()*npc.length)];
+
 /* ───── HELPERS ───── */
-const E = (t,d,c="#ff004c") => new EmbedBuilder().setTitle(t).setDescription(d).setColor(c);
-const rand = arr => arr[Math.floor(Math.random()*arr.length)];
+const E = (t,d,c="#ff004c") =>
+  new EmbedBuilder().setTitle(t).setDescription(d).setColor(c);
 
-/* ───── JACKPOT LEADERBOARD 😈 ───── */
-async function addJackpot(userId, amount){
-  await Jackpot.create({userId, amount, time:Date.now()});
-}
+const cd = (u,k,t)=>{
+  if(!u.cooldowns) u.cooldowns={};
+  if(u.cooldowns[k] && Date.now()<u.cooldowns[k])
+    return Math.ceil((u.cooldowns[k]-Date.now())/1000);
+  u.cooldowns[k]=Date.now()+t;
+  return 0;
+};
 
-/* ───── PET FUSION 🧬 ───── */
-function fusePets(u){
-  if(u.pets.length < 2) return null;
-
-  const p1 = u.pets.pop();
-  const p2 = u.pets.pop();
-
-  return {
-    name: `${p1.name}-${p2.name}-FUSED`,
-    power: (p1.power + p2.power) * cfg.pets.fusionMultiplier,
-    multi: (p1.multi + p2.multi) * cfg.pets.fusionMultiplier
-  };
-}
-
-/* ───── BLACKJACK AI 🎰 ───── */
-function drawCard(){
-  return Math.floor(Math.random()*11)+1;
-}
-
-function dealerPlay(){
-  let hand = [drawCard(), drawCard()];
-  while(hand.reduce((a,b)=>a+b,0) < cfg.blackjack.dealerStand){
-    hand.push(drawCard());
-  }
-  return hand.reduce((a,b)=>a+b,0);
-}
-
-/* ───── RAID SYSTEM 🏦 ───── */
-async function getRaid(guildId){
-  let r = await Raid.findOne({guildId});
-  if(!r) r = await Raid.create({guildId, bank: 100000, active:false});
-  return r;
-}
+const multi = u =>
+  1 + (u.pet?.multi || 0);
 
 /* ───── READY ───── */
-client.once("ready",()=>console.log("🔥 HOUSE OF MB — FINAL GOD CORE ONLINE"));
+client.once("ready",()=>{
+  console.log("🔥 HOUSE OF MB V2 — REALITY ENGINE ONLINE");
+});
 
-/* ───── COMMANDS ───── */
+/* ───── COMMAND ROUTER ───── */
 client.on("messageCreate", async m=>{
   if(!m.content.startsWith(cfg.prefix)||m.author.bot) return;
 
-  const args = m.content.slice(cfg.prefix.length).trim().split(/ +/);
-  const cmd = args.shift()?.toLowerCase();
+  const args=m.content.slice(cfg.prefix.length).trim().split(/ +/);
+  const cmd=args.shift()?.toLowerCase();
 
-  let u = await User.findOne({userId:m.author.id});
-  if(!u) u = await User.create({userId:m.author.id});
+  let u=await User.findOne({userId:m.author.id});
+  if(!u) u=await User.create({userId:m.author.id,cash:cfg.economy.startCash,pets:[],cooldowns:{}});
 
-  /* 🎲 JACKPOT */
+  const flavor = say();
+
+  /* ───── HELP (REALISTIC UI) ───── */
+  if(cmd==="help"){
+    const row=new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("casino").setLabel("🎰 Casino").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("pets").setLabel("🐾 Pets").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("raid").setLabel("🏦 Raids").setStyle(ButtonStyle.Secondary)
+    );
+
+    return m.reply({
+      embeds:[E("🏠 House of MB",`${flavor}\n\nEconomy simulation active.`)],
+      components:[row]
+    });
+  }
+
+  if(!u.accepted && cmd!=="accept")
+    return m.reply("⚠️ You must open help first.");
+
+  /* ───── BAL ───── */
+  if(cmd==="bal")
+    return m.reply(E("💰 Wallet",`Cash: $${u.cash}\n${flavor}`));
+
+  /* ───── DAILY ───── */
+  if(cmd==="daily"){
+    const w=cd(u,"daily",86400000);
+    if(w) return m.reply(`⏳ ${flavor}`);
+
+    u.cash+=Math.floor(cfg.economy.daily*multi(u));
+    await u.save();
+
+    return m.reply(E("🎁 Daily Collected",flavor));
+  }
+
+  /* ───── CASINO ───── */
+  if(cmd==="slots"){
+    const bet=parseInt(args[0]);
+    const win=Math.random()<0.5;
+
+    u.cash+=win?bet*cfg.casino.slotsMulti:-bet;
+    u.wins+=win?1:0;
+    u.losses+=win?0:1;
+
+    await u.save();
+
+    return m.reply(E("🎰 Slots",`${flavor}\n${win?"WIN":"LOSS"}`));
+  }
+
+  if(cmd==="blackjack"){
+    const bet=parseInt(args[0]);
+    const p=Math.floor(Math.random()*21)+1;
+    const d=Math.floor(Math.random()*21)+1;
+
+    const win=p>d&&p<=21;
+
+    u.cash+=win?bet*2:-bet;
+    await u.save();
+
+    return m.reply(E("🃏 Blackjack",`${flavor}\nYou:${p} Dealer:${d}`));
+  }
+
   if(cmd==="jackpot"){
-    const bet = parseInt(args[0]);
-    const win = Math.random() < 0.4;
+    const bet=parseInt(args[0]);
+    const win=Math.random()<cfg.casino.jackpotChance;
 
-    if(win){
-      const reward = bet*5;
-      u.cash += reward;
-      await addJackpot(m.author.id,reward);
-    } else {
-      u.cash -= bet;
-    }
-
+    u.cash+=win?bet*10:-bet;
     await u.save();
-    return m.reply({embeds:[E("🎲 Jackpot", win?`WIN +$${bet*5}`:`LOSS -$${bet}`)]});
+
+    return m.reply(E("🎲 Jackpot",`${flavor}\n${win?"MEGA WIN":"TRY AGAIN"}`));
   }
 
-  /* 🧬 PET FUSION */
+  /* ───── PETS ───── */
+  if(cmd==="pets"){
+    return m.reply(E("🐾 Pet Market","cat • wolf • dragon"));
+  }
+
+  if(cmd==="buypet"){
+    const p=cfg.pets.list[args[0]];
+    if(!p||u.cash<p.cost) return m.reply("❌ not available");
+
+    u.cash-=p.cost;
+    u.pet=p;
+
+    await u.save();
+    return m.reply(E("🐾 Pet Acquired",flavor));
+  }
+
   if(cmd==="fuse"){
-    const fused = fusePets(u);
-    if(!fused) return m.reply("Need 2 pets");
+    if(u.pets.length<2) return m.reply("❌ need more pets");
 
-    u.pets.push(fused);
+    const a=u.pets.pop();
+    const b=u.pets.pop();
+
+    const fused={
+      name:`${a.name}-${b.name}`,
+      multi:(a.multi+b.multi)*1.8
+    };
+
+    u.pet=fused;
     await u.save();
 
-    return m.reply({embeds:[E("🧬 Fusion Complete",`${fused.name} created!`)]});
+    return m.reply(E("🧬 Fusion Success",flavor));
   }
 
-  /* 🏦 RAID SYSTEM */
+  /* ───── RAID SYSTEM ───── */
   if(cmd==="raid"){
-    const r = await getRaid(m.guild.id);
+    let r=await Raid.findOne({guildId:m.guild.id});
+    if(!r) r=await Raid.create({guildId:m.guild.id,bank:cfg.raids.baseBank});
 
-    const success = Math.random() < 0.5;
-    if(success){
-      u.cash += r.bank;
-      r.bank = 0;
-    } else {
-      u.cash -= 5000;
-      r.bank += 5000;
-    }
+    const win=Math.random()<0.5;
+
+    u.cash+=win?r.bank:-5000;
+    r.bank=win?0:r.bank+5000;
 
     await r.save();
     await u.save();
 
-    return m.reply({
-      embeds:[E("🏦 RAID RESULT", success?"YOU STOLE THE BANK":"FAILED RAID")]
-    });
+    return m.reply(E("🏦 Raid Event",`${flavor}\n${win?"BANK BROKEN":"DEFENDED"}`));
   }
 
-  /* 🎰 BLACKJACK */
-  if(cmd==="blackjack"){
-    const bet = parseInt(args[0]);
-
-    let player = [drawCard(), drawCard()];
-    let dealer = dealerPlay();
-
-    let p = player.reduce((a,b)=>a+b,0);
-
-    const win = p <= 21 && (p > dealer || dealer > 21);
-
-    u.cash += win ? bet*2 : -bet;
+  /* ───── ADMIN ───── */
+  if(cmd==="inject"&&cfg.admins.includes(m.author.id)){
+    u.cash+=parseInt(args[0]);
     await u.save();
-
-    return m.reply({
-      embeds:[
-        E("🎰 Blackjack",
-          `You: ${p}\nDealer: ${dealer}\n\n${win?"WIN":"LOSS"}`)
-      ]
-    });
+    return m.reply("💉 injected reality shift");
   }
 
-  /* JACKPOT LEADERBOARD */
-  if(cmd==="topjackpot"){
-    const top = await Jackpot.find().sort({amount:-1}).limit(5);
-
-    return m.reply({
-      embeds:[E("🏆 Jackpot Legends",
-        top.map((x,i)=>`#${i+1} <@${x.userId}> — $${x.amount}`).join("\n")
-      )]
-    });
+  if(cmd==="wipe"&&cfg.admins.includes(m.author.id)){
+    await User.deleteMany({});
+    return m.reply("☢️ world reset");
   }
 
   await u.save();
