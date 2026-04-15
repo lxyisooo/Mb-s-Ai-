@@ -1,15 +1,11 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
+  EmbedBuilder
 } = require("discord.js");
 const mongoose = require("mongoose");
 require("dotenv").config();
-
-const PREFIX = "mb";
+const cfg = require("./config");
 
 const client = new Client({
   intents: [
@@ -19,220 +15,166 @@ const client = new Client({
   ]
 });
 
-/* ───── DATABASE ───── */
 mongoose.connect(process.env.MONGO_URI);
 
-const userSchema = new mongoose.Schema({
+/* ───── DATABASE ───── */
+const User = mongoose.model("User", new mongoose.Schema({
   userId: String,
+  cash: { type: Number, default: cfg.economy.startCash },
+  pets: { type: Array, default: [] }
+}));
 
-  cash: { type: Number, default: 1000 },
-  bank: { type: Number, default: 0 },
+const Jackpot = mongoose.model("Jackpot", new mongoose.Schema({
+  userId: String,
+  amount: Number,
+  time: Number
+}));
 
-  gems: { type: Number, default: 0 }, // 💎 PAY TO WIN
-  vip: { type: Boolean, default: false },
+const Raid = mongoose.model("Raid", new mongoose.Schema({
+  guildId: String,
+  bank: Number,
+  active: Boolean
+}));
 
-  boost: {
-    multiplier: { type: Number, default: 1 },
-    expires: { type: Number, default: 0 }
-  },
+/* ───── HELPERS ───── */
+const E = (t,d,c="#ff004c") => new EmbedBuilder().setTitle(t).setDescription(d).setColor(c);
+const rand = arr => arr[Math.floor(Math.random()*arr.length)];
 
-  insurance: { type: Boolean, default: false },
-
-  prestige: { type: Number, default: 0 },
-  baseMultiplier: { type: Number, default: 1 },
-
-  cooldowns: {
-    daily: { type: Number, default: 0 },
-    crime: { type: Number, default: 0 },
-    work: { type: Number, default: 0 }
-  },
-
-  accepted: { type: Boolean, default: false }
-});
-
-const User = mongoose.model("User", userSchema);
-
-/* ───── UTIL ───── */
-function cd(u, type, ms) {
-  const now = Date.now();
-  if (now < u.cooldowns[type]) return Math.ceil((u.cooldowns[type] - now) / 1000);
-  u.cooldowns[type] = now + ms;
-  return false;
+/* ───── JACKPOT LEADERBOARD 😈 ───── */
+async function addJackpot(userId, amount){
+  await Jackpot.create({userId, amount, time:Date.now()});
 }
 
-function getMultiplier(u) {
-  let m = u.baseMultiplier;
-  if (u.vip) m += 0.5;
-  if (Date.now() < u.boost.expires) m *= u.boost.multiplier;
-  return m;
+/* ───── PET FUSION 🧬 ───── */
+function fusePets(u){
+  if(u.pets.length < 2) return null;
+
+  const p1 = u.pets.pop();
+  const p2 = u.pets.pop();
+
+  return {
+    name: `${p1.name}-${p2.name}-FUSED`,
+    power: (p1.power + p2.power) * cfg.pets.fusionMultiplier,
+    multi: (p1.multi + p2.multi) * cfg.pets.fusionMultiplier
+  };
+}
+
+/* ───── BLACKJACK AI 🎰 ───── */
+function drawCard(){
+  return Math.floor(Math.random()*11)+1;
+}
+
+function dealerPlay(){
+  let hand = [drawCard(), drawCard()];
+  while(hand.reduce((a,b)=>a+b,0) < cfg.blackjack.dealerStand){
+    hand.push(drawCard());
+  }
+  return hand.reduce((a,b)=>a+b,0);
+}
+
+/* ───── RAID SYSTEM 🏦 ───── */
+async function getRaid(guildId){
+  let r = await Raid.findOne({guildId});
+  if(!r) r = await Raid.create({guildId, bank: 100000, active:false});
+  return r;
 }
 
 /* ───── READY ───── */
-client.once("ready", () => console.log("💸 HOUSE OF MB — PAY TO WIN ONLINE"));
+client.once("ready",()=>console.log("🔥 HOUSE OF MB — FINAL GOD CORE ONLINE"));
 
-/* ───── HELP ───── */
-const helpEmbed = new EmbedBuilder()
-  .setTitle("🏠 House of MB — Pay To Win")
-  .setDescription(
-    "**💰 Economy**\n`mb bal` `mb daily`\n\n" +
-    "**🎰 Gambling**\n`mb slots <bet>`\n\n" +
-    "**💀 Crime**\n`mb crime`\n\n" +
-    "**💎 Premium**\n`mb shop` `mb boost`\n\n" +
-    "**📈 Prestige**\n`mb prestige`\n"
-  )
-  .setColor("#ff0066");
+/* ───── COMMANDS ───── */
+client.on("messageCreate", async m=>{
+  if(!m.content.startsWith(cfg.prefix)||m.author.bot) return;
 
-const helpRow = new ActionRowBuilder().addComponents(
-  new ButtonBuilder()
-    .setCustomId("accept")
-    .setLabel("Accept Rules")
-    .setStyle(ButtonStyle.Success)
-);
-
-/* ───── MESSAGE HANDLER ───── */
-client.on("messageCreate", async msg => {
-  if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
-
-  const args = msg.content.slice(PREFIX.length).trim().split(/ +/);
+  const args = m.content.slice(cfg.prefix.length).trim().split(/ +/);
   const cmd = args.shift()?.toLowerCase();
 
-  let u = await User.findOne({ userId: msg.author.id });
-  if (!u) u = await User.create({ userId: msg.author.id });
+  let u = await User.findOne({userId:m.author.id});
+  if(!u) u = await User.create({userId:m.author.id});
 
-  if (cmd === "help")
-    return msg.reply({ embeds: [helpEmbed], components: [helpRow] });
-
-  if (!u.accepted)
-    return msg.reply("⚠️ Accept rules using `mb help`");
-
-  const mult = getMultiplier(u);
-
-  /* ───── BAL ───── */
-  if (cmd === "bal") {
-    return msg.reply(
-      `💰 Cash: ${u.cash}\n💎 Gems: ${u.gems}\n👑 VIP: ${u.vip}\n📈 Prestige: ${u.prestige}\n⚡ Multiplier: x${mult.toFixed(2)}`
-    );
-  }
-
-  /* ───── DAILY ───── */
-  if (cmd === "daily") {
-    const wait = cd(u, "daily", u.vip ? 43200000 : 86400000);
-    if (wait) return msg.reply(`⏳ ${wait}s left`);
-
-    const reward = Math.floor(2000 * mult);
-    u.cash += reward;
-    await u.save();
-
-    return msg.reply(`🎁 Daily claimed: **+${reward} MB Cash**`);
-  }
-  /* ───── CRIME ───── */
-  if (cmd === "crime") {
-    const wait = cd(u, "crime", 60000);
-    if (wait) return msg.reply(`⏳ ${wait}s`);
-
-    const success = Math.random() < (u.vip ? 0.75 : 0.55);
-
-    if (success) {
-      const win = Math.floor(1500 * mult);
-      u.cash += win;
-      await u.save();
-      return msg.reply(`💀 Crime SUCCESS! +${win}`);
-    } else {
-      if (u.insurance) {
-        u.insurance = false;
-        await u.save();
-        return msg.reply("🛡️ Insurance saved you from losing cash!");
-      }
-      const loss = Math.floor(700 * mult);
-      u.cash -= loss;
-      await u.save();
-      return msg.reply(`🚨 Caught! -${loss}`);
-    }
-  }
-
-  /* ───── SLOTS ───── */
-  if (cmd === "slots") {
+  /* 🎲 JACKPOT */
+  if(cmd==="jackpot"){
     const bet = parseInt(args[0]);
-    if (!bet || bet < 10 || bet > u.cash)
-      return msg.reply("❌ `mb slots <amount>`");
+    const win = Math.random() < 0.4;
 
-    const icons = ["🍒", "💎", "🔥"];
-    const roll = icons.map(() => icons[Math.floor(Math.random() * icons.length)]);
-    const win = roll.every(v => v === roll[0]);
-
-    let result = win ? bet * 6 : -bet;
-    if (!win && u.insurance) {
-      u.insurance = false;
-      result = 0;
+    if(win){
+      const reward = bet*5;
+      u.cash += reward;
+      await addJackpot(m.author.id,reward);
+    } else {
+      u.cash -= bet;
     }
 
-    u.cash += result;
+    await u.save();
+    return m.reply({embeds:[E("🎲 Jackpot", win?`WIN +$${bet*5}`:`LOSS -$${bet}`)]});
+  }
+
+  /* 🧬 PET FUSION */
+  if(cmd==="fuse"){
+    const fused = fusePets(u);
+    if(!fused) return m.reply("Need 2 pets");
+
+    u.pets.push(fused);
     await u.save();
 
-    return msg.reply(
-      `🎰 [ ${roll.join(" | ")} ]\n` +
-      (win ? `🔥 WIN +${result}` : result === 0 ? "🛡️ Insurance saved you!" : `💸 LOSS ${result}`)
-    );
+    return m.reply({embeds:[E("🧬 Fusion Complete",`${fused.name} created!`)]});
   }
 
-  /* ───── SHOP ───── */
-  if (cmd === "shop") {
-    return msg.reply(
-      "**💎 MB SHOP**\n" +
-      "`mb boost` → 5 gems (2× for 1h)\n" +
-      "`mb insurance` → 3 gems (1 use)\n" +
-      "`mb vip` → Admin only"
-    );
-  }
+  /* 🏦 RAID SYSTEM */
+  if(cmd==="raid"){
+    const r = await getRaid(m.guild.id);
 
-  if (cmd === "boost") {
-    if (u.gems < 5) return msg.reply("❌ Need 5 gems");
+    const success = Math.random() < 0.5;
+    if(success){
+      u.cash += r.bank;
+      r.bank = 0;
+    } else {
+      u.cash -= 5000;
+      r.bank += 5000;
+    }
 
-    u.gems -= 5;
-    u.boost.multiplier = 2;
-    u.boost.expires = Date.now() + 3600000;
+    await r.save();
     await u.save();
 
-    return msg.reply("⚡ 2× Boost activated for 1 hour!");
-  }
-
-  if (cmd === "insurance") {
-    if (u.gems < 3) return msg.reply("❌ Need 3 gems");
-
-    u.gems -= 3;
-    u.insurance = true;
-    await u.save();
-
-    return msg.reply("🛡️ Insurance purchased!");
-  }
-
-  /* ───── PRESTIGE ───── */
-  if (cmd === "prestige") {
-    if (u.cash < 300000)
-      return msg.reply("❌ Need 300,000 cash");
-
-    u.cash = 1000;
-    u.bank = 0;
-    u.prestige++;
-    u.baseMultiplier += 0.3;
-
-    await u.save();
-
-    return msg.reply(`📈 PRESTIGE UP! Total: ${u.prestige}`);
-  }
-});
-
-/* ───── BUTTON ───── */
-client.on("interactionCreate", async i => {
-  if (!i.isButton()) return;
-  if (i.customId === "accept") {
-    await User.findOneAndUpdate({ userId: i.user.id }, { accepted: true });
-    return i.update({
-      content: "✅ Rules accepted. Welcome to House of MB 💸",
-      embeds: [],
-      components: []
+    return m.reply({
+      embeds:[E("🏦 RAID RESULT", success?"YOU STOLE THE BANK":"FAILED RAID")]
     });
   }
+
+  /* 🎰 BLACKJACK */
+  if(cmd==="blackjack"){
+    const bet = parseInt(args[0]);
+
+    let player = [drawCard(), drawCard()];
+    let dealer = dealerPlay();
+
+    let p = player.reduce((a,b)=>a+b,0);
+
+    const win = p <= 21 && (p > dealer || dealer > 21);
+
+    u.cash += win ? bet*2 : -bet;
+    await u.save();
+
+    return m.reply({
+      embeds:[
+        E("🎰 Blackjack",
+          `You: ${p}\nDealer: ${dealer}\n\n${win?"WIN":"LOSS"}`)
+      ]
+    });
+  }
+
+  /* JACKPOT LEADERBOARD */
+  if(cmd==="topjackpot"){
+    const top = await Jackpot.find().sort({amount:-1}).limit(5);
+
+    return m.reply({
+      embeds:[E("🏆 Jackpot Legends",
+        top.map((x,i)=>`#${i+1} <@${x.userId}> — $${x.amount}`).join("\n")
+      )]
+    });
+  }
+
+  await u.save();
 });
 
 client.login(process.env.TOKEN);
