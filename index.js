@@ -1,16 +1,15 @@
-// ===============================
-// HOUSE OF MB — SUPREME ECONOMY
-// Prefix: mb
-// One file. No dead systems.
-// ===============================
+import "dotenv/config";
+import {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
+import OpenAI from "openai";
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-const mongoose = require("mongoose");
-require("dotenv").config();
-
-const PREFIX = "mb";
-
-/* ================= CLIENT ================= */
+// ───────────────── CONFIG ─────────────────
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -19,262 +18,168 @@ const client = new Client({
   ]
 });
 
-/* ================= DATABASE ================= */
-mongoose.connect(process.env.MONGO_URI);
-
-const userSchema = new mongoose.Schema({
-  userId: String,
-  cash: { type: Number, default: 1000 },
-  bank: { type: Number, default: 0 },
-  wins: { type: Number, default: 0 },
-  losses: { type: Number, default: 0 },
-
-  pets: { type: Array, default: [] },
-  pet: { type: Object, default: null },
-
-  skills: {
-    luck: { type: Number, default: 0 },
-    combat: { type: Number, default: 0 },
-    defense: { type: Number, default: 0 }
-  },
-
-  items: { type: Array, default: [] },
-
-  prestige: { type: Number, default: 0 },
-  cooldowns: { type: Object, default: {} }
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-const raidSchema = new mongoose.Schema({
-  guildId: String,
-  bossHP: { type: Number, default: 50000 },
-  level: { type: Number, default: 1 }
-});
+const PREFIX = "mb";
+const escapeRooms = new Map();
 
-const User = mongoose.model("User", userSchema);
-const Raid = mongoose.model("Raid", raidSchema);
-
-/* ================= DATA ================= */
-const PETS = {
-  cat: { name: "Cat", cost: 500, multi: 0.1, ability: "dodge" },
-  wolf: { name: "Wolf", cost: 2000, multi: 0.25, ability: "crit" },
-  dragon: { name: "Dragon", cost: 7000, multi: 0.75, ability: "burn" }
-};
-
-const ITEMS = {
-  charm: { name: "Lucky Charm", cost: 3000 },
-  armor: { name: "Armor Plating", cost: 5000 },
-  blade: { name: "Sharp Blade", cost: 4000 }
-};
-
-/* ================= HELPERS ================= */
-const E = (t, d) =>
-  new EmbedBuilder().setTitle(t).setDescription(d).setColor("#2f3136");
-
-function cooldown(u, key, time) {
-  if (!u.cooldowns[key] || Date.now() > u.cooldowns[key]) {
-    u.cooldowns[key] = Date.now() + time;
-    return 0;
-  }
-  return Math.ceil((u.cooldowns[key] - Date.now()) / 1000);
-}
-
-function totalMultiplier(u) {
-  return (
-    1 +
-    (u.pet?.multi || 0) +
-    u.skills.luck * 0.05 +
-    u.items.length * 0.05 +
-    u.prestige * 0.15
-  );
-}
-
-/* ================= READY ================= */
+// ───────────────── READY ─────────────────
 client.once("ready", () => {
-  console.log("HOUSE OF MB — SUPREME ONLINE");
+  console.log(`🤖 Logged in as ${client.user.tag}`);
+  console.log("OpenAI Key Loaded:", !!process.env.OPENAI_API_KEY);
 });
 
-/* ================= COMMAND HANDLER ================= */
-client.on("messageCreate", async m => {
-  if (!m.content.toLowerCase().startsWith(PREFIX + " ") || m.author.bot) return;
+// ───────────────── MESSAGE HANDLER ─────────────────
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
 
-  const args = m.content.slice(PREFIX.length + 1).trim().split(/ +/);
-  const cmd = args.shift().toLowerCase();
+  const mention = `<@${client.user.id}>`;
+  if (
+    !message.content.startsWith(PREFIX) &&
+    !message.content.startsWith(mention)
+  ) return;
 
-  let u = await User.findOne({ userId: m.author.id });
-  if (!u) u = await User.create({ userId: m.author.id });
+  const args = message.content
+    .replace(mention, PREFIX)
+    .slice(PREFIX.length)
+    .trim()
+    .split(/ +/);
 
-/* ================= ECONOMY ================= */
-  if (cmd === "bal") {
-    return m.reply(E("Wallet",
-      `Cash: $${u.cash}\nBank: $${u.bank}\nPrestige: ${u.prestige}`
-    ));
+  const command = args.shift()?.toLowerCase();
+
+  // ───────── HELP ─────────
+  if (command === "help") {
+    const embed = new EmbedBuilder()
+      .setTitle("✨ MultiBot Ultimate Control Panel")
+      .setDescription("AI + Games + Entertainment")
+      .addFields(
+        { name: "🧩 Escape Room", value: "`mb escape`" },
+        { name: "🎬 AI Recommendations", value: "`mb recommend`" },
+        { name: "🧠 Ask AI", value: "`mb ask <question>`" }
+      )
+      .setColor("Blurple");
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("escape").setLabel("🧩 Escape").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("recommend").setLabel("🎬 Movies").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("ask").setLabel("🧠 Ask AI").setStyle(ButtonStyle.Secondary)
+    );
+
+    return message.reply({ embeds: [embed], components: [row] });
   }
 
-  if (cmd === "daily") {
-    const w = cooldown(u, "daily", 86400000);
-    if (w) return m.reply(`⏳ ${w}s remaining`);
+  // ───────── ESCAPE ROOM (AI + TIMED + RANDOM) ─────────
+  if (command === "escape") {
+    try {
+      const ai = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: "Create a short escape room riddle. End with 'ANSWER:' followed by the answer."
+      });
 
-    const gain = Math.floor(800 * totalMultiplier(u));
-    u.cash += gain;
-    await u.save();
+      const text = ai.output_text;
+      const [riddle, answer] = text.split("ANSWER:");
 
-    return m.reply(E("Daily", `+$${gain}`));
+      escapeRooms.set(message.author.id, {
+        answer: answer.trim().toLowerCase(),
+        start: Date.now()
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle("🧩 AI Escape Room")
+        .setDescription(riddle)
+        .setFooter({ text: "⏱️ You have 60 seconds" })
+        .setColor("DarkPurple");
+
+      return message.reply({ embeds: [embed] });
+
+    } catch (err) {
+      console.error(err);
+      return message.reply("❌ Escape room AI failed.");
+    }
   }
 
-/* ================= CASINO ================= */
-  if (cmd === "slots") {
-    const bet = parseInt(args[0]);
-    if (!bet || bet <= 0 || bet > u.cash) return m.reply("Invalid bet.");
+  // ───────── ESCAPE ANSWERS ─────────
+  if (escapeRooms.has(message.author.id)) {
+    const data = escapeRooms.get(message.author.id);
 
-    const chance = 0.45 + u.skills.luck * 0.02;
-    const win = Math.random() < chance;
-
-    u.cash += win ? bet * 2 : -bet;
-    win ? u.wins++ : u.losses++;
-    await u.save();
-
-    return m.reply(E("Slots", win ? "🎰 WIN" : "❌ LOSS"));
-  }
-
-  if (cmd === "blackjack") {
-    const bet = parseInt(args[0]);
-    if (!bet || bet > u.cash) return m.reply("Invalid bet.");
-
-    const p = Math.floor(Math.random() * 21) + 1;
-    const d = Math.floor(Math.random() * 21) + 1;
-    const win = p <= 21 && (d > 21 || p > d);
-
-    u.cash += win ? bet * 2 : -bet;
-    await u.save();
-
-    return m.reply(E("Blackjack", `You: ${p} | Dealer: ${d}`));
-  }
-
-/* ================= PETS ================= */
-  if (cmd === "pets") {
-    return m.reply(E("Pets",
-      Object.entries(PETS)
-        .map(([k, p]) => `${k} — $${p.cost} (${p.ability})`)
-        .join("\n")
-    ));
-  }
-
-  if (cmd === "buypet") {
-    const p = PETS[args[0]];
-    if (!p || u.cash < p.cost) return m.reply("Unavailable.");
-
-    u.cash -= p.cost;
-    u.pet = p;
-    u.pets.push(p);
-    await u.save();
-
-    return m.reply(E("Pet Acquired", p.name));
-  }
-
-/* ================= SKILLS ================= */
-  if (cmd === "skills") {
-    return m.reply(E("Skills",
-      `Luck: ${u.skills.luck}\nCombat: ${u.skills.combat}\nDefense: ${u.skills.defense}`
-    ));
-  }
-
-  if (cmd === "train") {
-    const skill = args[0];
-    if (!u.skills[skill]) return m.reply("Invalid skill.");
-    if (u.cash < 1000) return m.reply("Need $1000.");
-
-    u.cash -= 1000;
-    u.skills[skill]++;
-    await u.save();
-
-    return m.reply(E("Training", `${skill} increased.`));
-  }
-
-/* ================= SHOP ================= */
-  if (cmd === "shop") {
-    return m.reply(E("Shop",
-      Object.entries(ITEMS)
-        .map(([k, i]) => `${k} — $${i.cost}`)
-        .join("\n")
-    ));
-  }
-
-  if (cmd === "buy") {
-    const i = ITEMS[args[0]];
-    if (!i || u.cash < i.cost) return m.reply("Unavailable.");
-
-    u.cash -= i.cost;
-    u.items.push(i.name);
-    await u.save();
-
-    return m.reply(E("Purchased", i.name));
-  }
-
-/* ================= DUEL ================= */
-  if (cmd === "duel") {
-    const target = m.mentions.users.first();
-    const bet = parseInt(args[1]);
-    if (!target || !bet || bet > u.cash) return m.reply("Invalid duel.");
-
-    const o = await User.findOne({ userId: target.id });
-    if (!o || o.cash < bet) return m.reply("Opponent invalid.");
-
-    const atk = Math.random() + u.skills.combat * 0.1;
-    const def = Math.random() + o.skills.defense * 0.1;
-    const win = atk > def;
-
-    u.cash += win ? bet : -bet;
-    o.cash += win ? -bet : bet;
-
-    await u.save(); await o.save();
-    return m.reply(E("Duel", win ? "You won." : "You lost."));
-  }
-
-/* ================= RAID BOSS ================= */
-  if (cmd === "raid") {
-    let r = await Raid.findOne({ guildId: m.guild.id });
-    if (!r) r = await Raid.create({ guildId: m.guild.id });
-
-    const dmg = Math.floor(500 + Math.random() * u.skills.combat * 300);
-    r.bossHP -= dmg;
-
-    if (r.bossHP <= 0) {
-      const reward = 10000 * r.level;
-      u.cash += reward;
-      r.level++;
-      r.bossHP = 50000 * r.level;
-      await r.save(); await u.save();
-      return m.reply(E("BOSS DOWN", `You dealt final blow. +$${reward}`));
+    if (Date.now() - data.start > 60000) {
+      escapeRooms.delete(message.author.id);
+      return message.reply("⏱️ Time’s up! Try `mb escape` again.");
     }
 
-    await r.save();
-    return m.reply(E("Raid", `You dealt ${dmg} damage.`));
+    if (message.content.toLowerCase().includes(data.answer)) {
+      escapeRooms.delete(message.author.id);
+      return message.reply("🏆 **YOU ESCAPED!**");
+    }
   }
 
-/* ================= PRESTIGE ================= */
-  if (cmd === "prestige") {
-    if (u.cash < 150000) return m.reply("Need $150k.");
+  // ───────── AI MOVIE & TV RECOMMENDATIONS ─────────
+  if (command === "recommend") {
+    const thinking = await message.reply("🎬 Thinking...");
 
-    u.cash = 1000;
-    u.skills = { luck: 0, combat: 0, defense: 0 };
-    u.items = [];
-    u.pets = [];
-    u.pet = null;
-    u.prestige++;
-    await u.save();
+    try {
+      const ai = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: "Recommend 3 movies and 3 TV shows with short descriptions."
+      });
 
-    return m.reply(E("Prestige", `Now prestige ${u.prestige}`));
+      const embed = new EmbedBuilder()
+        .setTitle("🎬 AI Recommendations")
+        .setDescription(ai.output_text)
+        .setColor("Gold");
+
+      return thinking.edit({ content: "", embeds: [embed] });
+
+    } catch (err) {
+      console.error(err);
+      return thinking.edit("❌ Recommendation AI failed.");
+    }
   }
 
-/* ================= LEADERBOARD ================= */
-  if (cmd === "top") {
-    const top = await User.find().sort({ cash: -1 }).limit(5);
-    return m.reply(E("Top Players",
-      top.map((x, i) => `#${i+1} <@${x.userId}> $${x.cash}`).join("\n")
-    ));
-  }
+  // ───────── REAL AI KNOWLEDGE ASSISTANT ─────────
+  if (command === "ask") {
+    const question = args.join(" ");
+    if (!question) return message.reply("❓ Ask something real.");
 
+    const thinking = await message.reply("🧠 Thinking...");
+
+    try {
+      const ai = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: question
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle("🧠 AI Answer")
+        .setDescription(ai.output_text.slice(0, 4000))
+        .setColor("Green");
+
+      return thinking.edit({ content: "", embeds: [embed] });
+
+    } catch (err) {
+      console.error(err);
+      return thinking.edit("❌ AI failed. Check key, model, or limits.");
+    }
+  }
 });
 
-/* ================= LOGIN ================= */
-client.login(process.env.TOKEN);
+// ───────────────── BUTTON HANDLER ─────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  const map = {
+    escape: "Type `mb escape`",
+    recommend: "Type `mb recommend`",
+    ask: "Type `mb ask <question>`"
+  };
+
+  await interaction.reply({
+    content: map[interaction.customId],
+    ephemeral: true
+  });
+});
+
+// ───────────────── LOGIN ─────────────────
+client.login(process.env.DISCORD_TOKEN);
