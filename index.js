@@ -182,4 +182,6 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ───────────────── LOGIN ─────────────────
+console.log("DISCORD_TOKEN value:", process.env.DISCORD_TOKEN);
+console.log("Length:", process.env.DISCORD_TOKEN?.length);
 client.login(process.env.DISCORD_TOKEN);
