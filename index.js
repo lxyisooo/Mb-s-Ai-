@@ -1,4 +1,3 @@
-import "dotenv/config";
 import {
   Client,
   GatewayIntentBits,
@@ -7,9 +6,15 @@ import {
   ButtonBuilder,
   ButtonStyle
 } from "discord.js";
-import OpenAI from "openai";
+import fetch from "node-fetch";
 
-// ───────────────── CONFIG ─────────────────
+/* =======================
+   ENV CHECK (DO NOT SKIP)
+======================= */
+console.log("DISCORD_TOKEN value:", process.env.DISCORD_TOKEN);
+console.log("Length:", process.env.DISCORD_TOKEN?.length);
+console.log("OpenAI Key Loaded:", !!process.env.OPENAI_API_KEY);
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -18,28 +23,54 @@ const client = new Client({
   ]
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 const PREFIX = "mb";
-const escapeRooms = new Map();
 
-// ───────────────── READY ─────────────────
+/* =======================
+   SIMPLE DATABASE (MEMORY)
+======================= */
+const users = new Map();
+const escapeGames = new Map();
+
+/* =======================
+   AI FUNCTION (REAL)
+======================= */
+async function askAI(prompt) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7
+    })
+  });
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "No response.";
+}
+
+/* =======================
+   READY
+======================= */
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-  console.log("OpenAI Key Loaded:", !!process.env.OPENAI_API_KEY);
 });
 
-// ───────────────── MESSAGE HANDLER ─────────────────
+/* =======================
+   MESSAGE HANDLER
+======================= */
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const mention = `<@${client.user.id}>`;
-  if (
-    !message.content.startsWith(PREFIX) &&
-    !message.content.startsWith(mention)
-  ) return;
+  const usedPrefix =
+    message.content.startsWith(PREFIX) ||
+    message.content.startsWith(mention);
+
+  if (!usedPrefix) return;
 
   const args = message.content
     .replace(mention, PREFIX)
@@ -49,139 +80,138 @@ client.on("messageCreate", async (message) => {
 
   const command = args.shift()?.toLowerCase();
 
-  // ───────── HELP ─────────
+  // USER INIT
+  if (!users.has(message.author.id)) {
+    users.set(message.author.id, { xp: 0, coins: 50 });
+  }
+  const user = users.get(message.author.id);
+  user.xp += 5;
+
+  /* =======================
+     HELP
+  ======================= */
   if (command === "help") {
     const embed = new EmbedBuilder()
-      .setTitle("✨ MultiBot Ultimate Control Panel")
-      .setDescription("AI + Games + Entertainment")
+      .setTitle("✨ MultiBot Control Panel")
+      .setDescription("Choose a system below 👇")
       .addFields(
         { name: "🧩 Escape Room", value: "`mb escape`" },
-        { name: "🎬 AI Recommendations", value: "`mb recommend`" },
-        { name: "🧠 Ask AI", value: "`mb ask <question>`" }
+        { name: "🎬 Recommendations", value: "`mb recommend`" },
+        { name: "🧠 Ask AI", value: "`mb ask <question>`" },
+        { name: "💰 Profile", value: "`mb profile`" }
       )
       .setColor("Blurple");
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("escape").setLabel("🧩 Escape").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("recommend").setLabel("🎬 Movies").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("ask").setLabel("🧠 Ask AI").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("ai").setLabel("🧠 Ask AI").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("movies").setLabel("🎬 Movies").setStyle(ButtonStyle.Secondary)
     );
 
     return message.reply({ embeds: [embed], components: [row] });
   }
 
-  // ───────── ESCAPE ROOM (AI + TIMED + RANDOM) ─────────
+  /* =======================
+     PROFILE
+  ======================= */
+  if (command === "profile") {
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`${message.author.username}'s Profile`)
+          .addFields(
+            { name: "XP", value: `${user.xp}`, inline: true },
+            { name: "Coins", value: `${user.coins}`, inline: true }
+          )
+          .setColor("Gold")
+      ]
+    });
+  }
+
+  /* =======================
+     ESCAPE ROOM (UPGRADED)
+  ======================= */
   if (command === "escape") {
-    try {
-      const ai = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: "Create a short escape room riddle. End with 'ANSWER:' followed by the answer."
-      });
+    escapeGames.set(message.author.id, 1);
 
-      const text = ai.output_text;
-      const [riddle, answer] = text.split("ANSWER:");
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🧩 Escape Room — Room 1")
+          .setDescription(
+            "You wake up in a locked lab.\n\n🧠 **Riddle:**\nI have keys but no locks. I have space but no room. What am I?"
+          )
+          .setFooter({ text: "Reply with your answer!" })
+          .setColor("DarkPurple")
+      ]
+    });
+  }
 
-      escapeRooms.set(message.author.id, {
-        answer: answer.trim().toLowerCase(),
-        start: Date.now()
-      });
+  if (escapeGames.has(message.author.id)) {
+    const stage = escapeGames.get(message.author.id);
+    const answer = message.content.toLowerCase();
 
-      const embed = new EmbedBuilder()
-        .setTitle("🧩 AI Escape Room")
-        .setDescription(riddle)
-        .setFooter({ text: "⏱️ You have 60 seconds" })
-        .setColor("DarkPurple");
+    if (stage === 1 && answer.includes("keyboard")) {
+      escapeGames.set(message.author.id, 2);
+      return message.reply("✅ Correct! Next room...\n🧩 *What runs but never walks?*");
+    }
 
-      return message.reply({ embeds: [embed] });
-
-    } catch (err) {
-      console.error(err);
-      return message.reply("❌ Escape room AI failed.");
+    if (stage === 2 && answer.includes("river")) {
+      escapeGames.delete(message.author.id);
+      user.coins += 100;
+      return message.reply("🎉 YOU ESCAPED! +100 coins!");
     }
   }
 
-  // ───────── ESCAPE ANSWERS ─────────
-  if (escapeRooms.has(message.author.id)) {
-    const data = escapeRooms.get(message.author.id);
-
-    if (Date.now() - data.start > 60000) {
-      escapeRooms.delete(message.author.id);
-      return message.reply("⏱️ Time’s up! Try `mb escape` again.");
-    }
-
-    if (message.content.toLowerCase().includes(data.answer)) {
-      escapeRooms.delete(message.author.id);
-      return message.reply("🏆 **YOU ESCAPED!**");
-    }
-  }
-
-  // ───────── AI MOVIE & TV RECOMMENDATIONS ─────────
+  /* =======================
+     MOVIE RECOMMENDATIONS
+  ======================= */
   if (command === "recommend") {
-    const thinking = await message.reply("🎬 Thinking...");
-
-    try {
-      const ai = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: "Recommend 3 movies and 3 TV shows with short descriptions."
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle("🎬 AI Recommendations")
-        .setDescription(ai.output_text)
-        .setColor("Gold");
-
-      return thinking.edit({ content: "", embeds: [embed] });
-
-    } catch (err) {
-      console.error(err);
-      return thinking.edit("❌ Recommendation AI failed.");
-    }
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🎬 Top Picks")
+          .addFields(
+            { name: "Movies", value: "Inception\nInterstellar\nThe Matrix" },
+            { name: "TV Shows", value: "Breaking Bad\nThe Boys\nStranger Things" }
+          )
+          .setColor("Orange")
+      ]
+    });
   }
 
-  // ───────── REAL AI KNOWLEDGE ASSISTANT ─────────
+  /* =======================
+     AI COMMAND
+  ======================= */
   if (command === "ask") {
     const question = args.join(" ");
-    if (!question) return message.reply("❓ Ask something real.");
+    if (!question) return message.reply("Ask something 😭");
 
-    const thinking = await message.reply("🧠 Thinking...");
+    const reply = await askAI(question);
 
-    try {
-      const ai = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: question
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle("🧠 AI Answer")
-        .setDescription(ai.output_text.slice(0, 4000))
-        .setColor("Green");
-
-      return thinking.edit({ content: "", embeds: [embed] });
-
-    } catch (err) {
-      console.error(err);
-      return thinking.edit("❌ AI failed. Check key, model, or limits.");
-    }
+    return message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🧠 AI Response")
+          .setDescription(reply)
+          .setColor("Green")
+      ]
+    });
   }
 });
 
-// ───────────────── BUTTON HANDLER ─────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
+/* =======================
+   BUTTONS
+======================= */
+client.on("interactionCreate", async (i) => {
+  if (!i.isButton()) return;
 
-  const map = {
-    escape: "Type `mb escape`",
-    recommend: "Type `mb recommend`",
-    ask: "Type `mb ask <question>`"
-  };
-
-  await interaction.reply({
-    content: map[interaction.customId],
-    ephemeral: true
-  });
+  if (i.customId === "escape") return i.reply({ content: "Type `mb escape`", ephemeral: true });
+  if (i.customId === "ai") return i.reply({ content: "Type `mb ask <question>`", ephemeral: true });
+  if (i.customId === "movies") return i.reply({ content: "Type `mb recommend`", ephemeral: true });
 });
 
-// ───────────────── LOGIN ─────────────────
-console.log("DISCORD_TOKEN value:", process.env.DISCORD_TOKEN);
-console.log("Length:", process.env.DISCORD_TOKEN?.length);
+/* =======================
+   LOGIN
+======================= */
 client.login(process.env.DISCORD_TOKEN);
