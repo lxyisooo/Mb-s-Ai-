@@ -91,6 +91,7 @@ client.on('interactionCreate', async (interaction) => {
         )
     );
 
+    
     const menu3 = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('group_specials')
@@ -98,7 +99,7 @@ client.on('interactionCreate', async (interaction) => {
         .addOptions(
           { label: 'Tuffest People in Chat', value: '1474660849447866410', emoji: ':001criipyimcool:' },
           { label: 'Doritos', value: '1477694222307168326', emoji: ':nerd~1:' },
-          { label: 'Morvani Automative LLC', value: '1477700900138254608', emoji: ':0096_damn:' }
+          { label: 'Morvani Automative LLC', value: '1477700900138254608', emoji: { id '<1472222233215893555>' }
         )
     );
 
