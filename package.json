@@ -1,17 +1,14 @@
 {
-  "name": "houseofmb",
-  "version": "2.0.0",
+  "name": "multibot",
+  "version": "4.0.0",
+  "type": "module",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
-    "discord.js": "^14.15.2",
-    "mongoose": "^8.2.1",
+    "discord.js": "^14.14.1",
+    "openai": "^4.38.0",
     "dotenv": "^16.4.5"
   }
 }
