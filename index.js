@@ -13,9 +13,7 @@ import {
 
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.Guilds
   ]
 });
 
@@ -91,29 +89,29 @@ client.on('interactionCreate', async (interaction) => {
         )
     );
 
-    
+    /* ✅ FIXED MENU 3 */
     const menu3 = new ActionRowBuilder().addComponents(
-  new StringSelectMenuBuilder()
-    .setCustomId('group_specials')
-    .setPlaceholder('✨ Special Roles')
-    .addOptions(
-      {
-        label: 'Tuffest People in Chat',
-        value: '1474660849447866410',
-        emoji: { id: '1472221896044052480>' }
-      },
-      {
-        label: 'Doritos',
-        value: '1477694222307168326',
-        emoji: { id: '1472222233215893555' }
-      },
-      {
-        label: 'Morvani Automotive LLC',
-        value: '1477700900138254608',
-        emoji: { id: '1472222233215893555' }
-      }
-    )
-);
+      new StringSelectMenuBuilder()
+        .setCustomId('group_specials')
+        .setPlaceholder('✨ Special Roles')
+        .addOptions(
+          {
+            label: 'Tuffest People in Chat',
+            value: '1474660849447866410',
+            emoji: { id: '1472221896044052480' }
+          },
+          {
+            label: 'Doritos',
+            value: '1477694222307168326',
+            emoji: { id: '1472222233215893555' }
+          },
+          {
+            label: 'Morvani Automotive LLC',
+            value: '1477700900138254608',
+            emoji: { id: '1472222233215893555' }
+          }
+        )
+    );
 
     const menu4 = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -130,6 +128,9 @@ client.on('interactionCreate', async (interaction) => {
         )
     );
 
+    /* ✅ FIX: prevent double-response crash */
+    if (interaction.replied || interaction.deferred) return;
+
     return interaction.reply({
       embeds: [roleEmbed],
       components: [menu1, menu2, menu3, menu4]
@@ -138,6 +139,9 @@ client.on('interactionCreate', async (interaction) => {
 
   /* ── ROLE HANDLER ── */
   if (interaction.isStringSelectMenu()) {
+
+    if (interaction.replied || interaction.deferred) return;
+
     const roleId = interaction.values[0];
     const role = interaction.guild.roles.cache.get(roleId);
 
@@ -146,14 +150,18 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     try {
-      if (interaction.member.roles.cache.has(roleId)) {
-        await interaction.member.roles.remove(roleId);
+      const member = interaction.member;
+
+      if (member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId);
         return interaction.reply({ content: `✅ Removed **${role.name}**`, ephemeral: true });
       } else {
-        await interaction.member.roles.add(roleId);
+        await member.roles.add(roleId);
         return interaction.reply({ content: `✅ Added **${role.name}**`, ephemeral: true });
       }
-    } catch {
+
+    } catch (err) {
+      console.error(err);
       return interaction.reply({
         content: '❌ Permission denied. Check role hierarchy.',
         ephemeral: true
