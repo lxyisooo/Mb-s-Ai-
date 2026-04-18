@@ -108,7 +108,7 @@ client.on('interactionCreate', async (interaction) => {
           {
             label: 'Morvani Automotive LLC',
             value: '1477700900138254608',
-            emoji: { id: '1472222233215893555' }
+            emoji: { id: '1472215799409279110' }
           }
         )
     );
