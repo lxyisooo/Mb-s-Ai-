@@ -96,9 +96,9 @@ client.on('interactionCreate', async (interaction) => {
         .setCustomId('group_specials')
         .setPlaceholder('✨ Special Roles')
         .addOptions(
-          { label: 'Special Access 1', value: '1474660849447866410', emoji: '💎' },
-          { label: 'Special Access 2', value: '1477694222307168326', emoji: '🌟' },
-          { label: 'Special Access 3', value: '1477700900138254608', emoji: '🔥' }
+          { label: 'Tuffest People in Chat', value: '1474660849447866410', emoji: ':001criipyimcool:' },
+          { label: 'Doritos', value: '1477694222307168326', emoji: ':nerd~1:' },
+          { label: 'Morvani Automative LLC', value: '1477700900138254608', emoji: ':0096_damn:' }
         )
     );
 
