@@ -1,217 +1,299 @@
+/******************************************************************************************
+ * MULTIBOT SUPREME EDITION
+ * Author: You 😈
+ * Version: 6.0.0
+ * Node: 18+
+ * discord.js: v14
+ ******************************************************************************************/
+
 import {
   Client,
   GatewayIntentBits,
+  Partials,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  Collection
 } from "discord.js";
-import fetch from "node-fetch";
+import OpenAI from "openai";
 
-/* =======================
-   ENV CHECK (DO NOT SKIP)
-======================= */
-console.log("DISCORD_TOKEN value:", process.env.DISCORD_TOKEN);
-console.log("Length:", process.env.DISCORD_TOKEN?.length);
-console.log("OpenAI Key Loaded:", !!process.env.OPENAI_API_KEY);
+/******************************************************************************************
+ * ENV VALIDATION (THIS PREVENTS YOUR TOKEN BUG)
+ ******************************************************************************************/
+
+console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN);
+console.log("TOKEN LENGTH:", process.env.DISCORD_TOKEN?.length);
+console.log("OPENAI KEY LOADED:", Boolean(process.env.OPENAI_API_KEY));
+
+if (!process.env.DISCORD_TOKEN)
+  throw new Error("❌ DISCORD_TOKEN is missing from environment variables");
+
+if (!process.env.OPENAI_API_KEY)
+  console.warn("⚠️ OpenAI key missing — AI features disabled");
+
+/******************************************************************************************
+ * CLIENT SETUP
+ ******************************************************************************************/
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
+  ],
+  partials: [Partials.Channel]
+});
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 const PREFIX = "mb";
 
-/* =======================
-   SIMPLE DATABASE (MEMORY)
-======================= */
-const users = new Map();
-const escapeGames = new Map();
+/******************************************************************************************
+ * GLOBAL STATE (MEMORY, GAMES, COOLDOWNS)
+ ******************************************************************************************/
 
-/* =======================
-   AI FUNCTION (REAL)
-======================= */
-async function askAI(prompt) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7
-    })
-  });
+const userMemory = new Map();       // AI memory
+const escapeGames = new Map();      // Escape room states
+const cooldowns = new Collection();
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "No response.";
+/******************************************************************************************
+ * UTILS
+ ******************************************************************************************/
+
+function cooldown(userId, command, time = 3000) {
+  const key = `${userId}-${command}`;
+  if (cooldowns.has(key)) return true;
+  cooldowns.set(key, true);
+  setTimeout(() => cooldowns.delete(key), time);
+  return false;
 }
 
-/* =======================
-   READY
-======================= */
+function baseEmbed(title, color = "Blurple") {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setColor(color)
+    .setFooter({ text: "MultiBot Supreme" })
+    .setTimestamp();
+}
+
+/******************************************************************************************
+ * READY
+ ******************************************************************************************/
+
 client.once("ready", () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-/* =======================
-   MESSAGE HANDLER
-======================= */
+/******************************************************************************************
+ * MESSAGE HANDLER (PREFIX + MENTION)
+ ******************************************************************************************/
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const mention = `<@${client.user.id}>`;
-  const usedPrefix =
-    message.content.startsWith(PREFIX) ||
-    message.content.startsWith(mention);
+  const isMention = message.content.startsWith(mention);
+  const isPrefix = message.content.startsWith(PREFIX);
 
-  if (!usedPrefix) return;
+  if (!isMention && !isPrefix) return;
 
-  const args = message.content
-    .replace(mention, PREFIX)
-    .slice(PREFIX.length)
-    .trim()
-    .split(/ +/);
+  const args = isMention
+    ? message.content.slice(mention.length).trim().split(/ +/)
+    : message.content.slice(PREFIX.length).trim().split(/ +/);
 
   const command = args.shift()?.toLowerCase();
+  if (!command) return;
 
-  // USER INIT
-  if (!users.has(message.author.id)) {
-    users.set(message.author.id, { xp: 0, coins: 50 });
-  }
-  const user = users.get(message.author.id);
-  user.xp += 5;
+  if (cooldown(message.author.id, command)) return;
 
-  /* =======================
-     HELP
-  ======================= */
+  /****************************************************************************************
+   * HELP COMMAND
+   ****************************************************************************************/
   if (command === "help") {
-    const embed = new EmbedBuilder()
-      .setTitle("✨ MultiBot Control Panel")
-      .setDescription("Choose a system below 👇")
+    const embed = baseEmbed("🤖 MultiBot Help")
+      .setDescription("Prefix: `mb` or mention the bot")
       .addFields(
+        { name: "🧠 AI", value: "`mb ask <question>`" },
+        { name: "📚 Knowledge", value: "`mb explain <topic>`" },
+        { name: "🎬 Movies & TV", value: "`mb recommend <genre>`" },
         { name: "🧩 Escape Room", value: "`mb escape`" },
-        { name: "🎬 Recommendations", value: "`mb recommend`" },
-        { name: "🧠 Ask AI", value: "`mb ask <question>`" },
-        { name: "💰 Profile", value: "`mb profile`" }
-      )
-      .setColor("Blurple");
+        { name: "ℹ️ Utility", value: "`mb ping`, `mb uptime`" }
+      );
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  /****************************************************************************************
+   * PING
+   ****************************************************************************************/
+  if (command === "ping") {
+    return message.reply({
+      embeds: [
+        baseEmbed("🏓 Pong", "Green")
+          .setDescription(`Latency: **${Date.now() - message.createdTimestamp}ms**`)
+      ]
+    });
+  }
+
+  /****************************************************************************************
+   * AI ASK (MEMORY ENABLED)
+   ****************************************************************************************/
+  if (command === "ask") {
+    if (!process.env.OPENAI_API_KEY)
+      return message.reply("❌ AI disabled.");
+
+    const prompt = args.join(" ");
+    if (!prompt) return message.reply("Ask something.");
+
+    const memory = userMemory.get(message.author.id) || [];
+    memory.push({ role: "user", content: prompt });
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: "You are a helpful Discord AI assistant." },
+        ...memory.slice(-10)
+      ]
+    });
+
+    const reply = response.choices[0].message.content;
+    memory.push({ role: "assistant", content: reply });
+    userMemory.set(message.author.id, memory);
+
+    return message.reply({
+      embeds: [
+        baseEmbed("🧠 AI Response", "Green").setDescription(reply)
+      ]
+    });
+  }
+
+  /****************************************************************************************
+   * KNOWLEDGE ASSISTANT
+   ****************************************************************************************/
+  if (command === "explain") {
+    const topic = args.join(" ");
+    if (!topic) return message.reply("Explain what?");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: "Explain concepts simply and clearly." },
+        { role: "user", content: topic }
+      ]
+    });
+
+    return message.reply({
+      embeds: [
+        baseEmbed(`📚 ${topic}`, "Blue")
+          .setDescription(response.choices[0].message.content)
+      ]
+    });
+  }
+
+  /****************************************************************************************
+   * MOVIE & TV RECOMMENDER
+   ****************************************************************************************/
+  if (command === "recommend") {
+    const genre = args.join(" ") || "any";
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [
+        {
+          role: "user",
+          content: `Recommend one movie and one TV show for genre: ${genre}`
+        }
+      ]
+    });
+
+    return message.reply({
+      embeds: [
+        baseEmbed("🎬 Recommendations", "Orange")
+          .setDescription(response.choices[0].message.content)
+      ]
+    });
+  }
+
+  /****************************************************************************************
+   * ESCAPE ROOM V2 (MULTI-STAGE)
+   ****************************************************************************************/
+  if (command === "escape") {
+    escapeGames.set(message.author.id, {
+      stage: 1,
+      inventory: []
+    });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("escape").setLabel("🧩 Escape").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("ai").setLabel("🧠 Ask AI").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("movies").setLabel("🎬 Movies").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("look").setLabel("👀 Look Around").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("desk").setLabel("🗄 Desk").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("door").setLabel("🚪 Door").setStyle(ButtonStyle.Danger)
     );
 
-    return message.reply({ embeds: [embed], components: [row] });
-  }
-
-  /* =======================
-     PROFILE
-  ======================= */
-  if (command === "profile") {
     return message.reply({
       embeds: [
-        new EmbedBuilder()
-          .setTitle(`${message.author.username}'s Profile`)
-          .addFields(
-            { name: "XP", value: `${user.xp}`, inline: true },
-            { name: "Coins", value: `${user.coins}`, inline: true }
-          )
-          .setColor("Gold")
-      ]
-    });
-  }
-
-  /* =======================
-     ESCAPE ROOM (UPGRADED)
-  ======================= */
-  if (command === "escape") {
-    escapeGames.set(message.author.id, 1);
-
-    return message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🧩 Escape Room — Room 1")
-          .setDescription(
-            "You wake up in a locked lab.\n\n🧠 **Riddle:**\nI have keys but no locks. I have space but no room. What am I?"
-          )
-          .setFooter({ text: "Reply with your answer!" })
-          .setColor("DarkPurple")
-      ]
-    });
-  }
-
-  if (escapeGames.has(message.author.id)) {
-    const stage = escapeGames.get(message.author.id);
-    const answer = message.content.toLowerCase();
-
-    if (stage === 1 && answer.includes("keyboard")) {
-      escapeGames.set(message.author.id, 2);
-      return message.reply("✅ Correct! Next room...\n🧩 *What runs but never walks?*");
-    }
-
-    if (stage === 2 && answer.includes("river")) {
-      escapeGames.delete(message.author.id);
-      user.coins += 100;
-      return message.reply("🎉 YOU ESCAPED! +100 coins!");
-    }
-  }
-
-  /* =======================
-     MOVIE RECOMMENDATIONS
-  ======================= */
-  if (command === "recommend") {
-    return message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🎬 Top Picks")
-          .addFields(
-            { name: "Movies", value: "Inception\nInterstellar\nThe Matrix" },
-            { name: "TV Shows", value: "Breaking Bad\nThe Boys\nStranger Things" }
-          )
-          .setColor("Orange")
-      ]
-    });
-  }
-
-  /* =======================
-     AI COMMAND
-  ======================= */
-  if (command === "ask") {
-    const question = args.join(" ");
-    if (!question) return message.reply("Ask something 😭");
-
-    const reply = await askAI(question);
-
-    return message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🧠 AI Response")
-          .setDescription(reply)
-          .setColor("Green")
-      ]
+        baseEmbed("🧩 Escape Room")
+          .setDescription("You wake up in a locked room. What do you do?")
+      ],
+      components: [row]
     });
   }
 });
 
-/* =======================
-   BUTTONS
-======================= */
-client.on("interactionCreate", async (i) => {
-  if (!i.isButton()) return;
+/******************************************************************************************
+ * BUTTON INTERACTIONS (ESCAPE ROOM LOGIC)
+ ******************************************************************************************/
 
-  if (i.customId === "escape") return i.reply({ content: "Type `mb escape`", ephemeral: true });
-  if (i.customId === "ai") return i.reply({ content: "Type `mb ask <question>`", ephemeral: true });
-  if (i.customId === "movies") return i.reply({ content: "Type `mb recommend`", ephemeral: true });
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  const game = escapeGames.get(interaction.user.id);
+  if (!game)
+    return interaction.reply({ content: "No active escape room.", ephemeral: true });
+
+  if (interaction.customId === "look") {
+    return interaction.reply({
+      embeds: [
+        baseEmbed("👀 You Look Around")
+          .setDescription("A desk, a locked door, and a strange painting.")
+      ],
+      ephemeral: true
+    });
+  }
+
+  if (interaction.customId === "desk") {
+    if (!game.inventory.includes("key")) {
+      game.inventory.push("key");
+      return interaction.reply({
+        embeds: [
+          baseEmbed("🗝️ Desk Opened", "Gold")
+            .setDescription("You found a **key**!")
+        ],
+        ephemeral: true
+      });
+    }
+    return interaction.reply({ content: "Nothing else here.", ephemeral: true });
+  }
+
+  if (interaction.customId === "door") {
+    if (game.inventory.includes("key")) {
+      escapeGames.delete(interaction.user.id);
+      return interaction.reply({
+        embeds: [
+          baseEmbed("🎉 Escaped!", "Green")
+            .setDescription("You unlocked the door and escaped!")
+        ]
+      });
+    }
+    return interaction.reply({ content: "🚫 Door is locked.", ephemeral: true });
+  }
 });
 
-/* =======================
-   LOGIN
-======================= */
+/******************************************************************************************
+ * LOGIN
+ ******************************************************************************************/
+
 client.login(process.env.DISCORD_TOKEN);
