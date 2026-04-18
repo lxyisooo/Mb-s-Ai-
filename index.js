@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import messageHandler from "./handlers/messageHandler.js";
 
