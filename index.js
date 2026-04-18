@@ -1,159 +1,133 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, 
-    ButtonBuilder, ButtonStyle, ComponentType 
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder, REST, Routes 
 } = require('discord.js');
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// --- ⚙️ CONFIG & STATE ---
-const DEFAULT_PREFIX = 'mb'; 
-const activeGames = new Map();
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
 
-// --- 🛠️ HELPER: THE "BEAUTIFIER" ---
-const createSystemEmbed = (title, description, color = '#2b2d31') => {
-    return new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(description)
-        .setColor(color)
-        .setTimestamp();
-};
+// --- 🛡️ SLASH COMMAND REGISTRATION ---
+const commands = [{
+    name: 'setup-roles',
+    description: 'Deploys the full community role interface',
+}];
 
-client.once('ready', () => {
-    console.log(`🚀 CORE ONLINE: ${client.user.tag}`);
-    client.user.setActivity('mb help | @me help', { type: 3 }); // Watching
-});
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+(async () => {
+    try {
+        console.log('🔄 Deploying Slash Commands...');
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        console.log('✅ Commands Synced!');
+    } catch (e) { console.error(e); }
+})();
 
-    // --- 🤖 THE "HYBRID" PREFIX LOGIC (Prefix or Mention) ---
-    const mentionRegex = new RegExp(`^<@!?${client.user.id}>\\s*`);
-    const hasMention = mentionRegex.test(message.content);
-    const hasPrefix = message.content.toLowerCase().startsWith(DEFAULT_PREFIX);
-
-    if (!hasMention && !hasPrefix) return;
-
-    // Clean the content to get args
-    const content = hasMention 
-        ? message.content.replace(mentionRegex, '') 
-        : message.content.slice(DEFAULT_PREFIX.length).trim();
+client.on('interactionCreate', async (interaction) => {
     
-    const args = content.split(/ +/);
-    const command = args.shift()?.toLowerCase();
-
-    if (!command) return;
-
-    // --- 🏥 HELP SYSTEM (NON-CRINGE) ---
-    if (command === 'help') {
-        const helpBox = createSystemEmbed('⚙️ COMMAND INTERFACE', 'Status: **Operational**')
+    // 1. TRIGGER THE SETUP
+    if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roles') {
+        const roleEmbed = new EmbedBuilder()
+            .setTitle('💫 Community Role Center')
+            .setDescription('Select your roles below to personalize your profile and get notified!')
+            .setColor('#2b2d31')
             .addFields(
-                { name: '🧠 AI UTILITY', value: '`ask` • `explain` • `recommend`', inline: true },
-                { name: '⚔️ RPG SYSTEM', value: '`escape` • `stats` • `inv`', inline: true },
-                { name: '📡 TRIGGER', value: `Use \`${DEFAULT_PREFIX}\` or mention <@${client.user.id}>`, inline: false }
-            )
-            .setThumbnail(client.user.displayAvatarURL());
-        return message.reply({ embeds: [helpBox] });
-    }
-
-    // --- 🧠 AI UTILITIES (STRUCTURED) ---
-    if (command === 'explain' || command === 'ask') {
-        const query = args.join(' ');
-        if (!query) return message.reply("Input required for processing.");
-
-        const aiEmbed = new EmbedBuilder()
-            .setColor('#5865F2')
-            .setAuthor({ name: 'AI Processing Unit', iconURL: 'https://i.imgur.com/8N7CHpW.png' })
-            .setTitle(`🔍 Analysis: ${query.substring(0, 20)}...`)
-            .setDescription(`> *Query received. Generating simplified breakdown...*\n\n**${query}**\n\n[ AI Logic/API Result would go here ]`)
-            .setFooter({ text: 'Neural Link Active' });
-
-        return message.reply({ embeds: [aiEmbed] });
-    }
-
-    // --- 🎮 THE ESCAPE RPG (FULL INTEGRATION) ---
-    if (command === 'escape') {
-        if (activeGames.has(message.author.id)) return message.reply("⚠️ Active session found. Finish your run.");
-
-        // Character Classes Logic
-        const classes = {
-            warrior: { hp: 150, atk: 12, def: 10, gold: 50 },
-            rogue: { hp: 90, atk: 22, def: 5, gold: 120 },
-            mage: { hp: 70, atk: 30, def: 2, gold: 30 }
-        };
-
-        const choice = args[0]?.toLowerCase();
-        const stats = classes[choice] || classes.warrior;
-
-        const gameState = {
-            ...stats,
-            maxHp: stats.hp,
-            room: 1,
-            inv: ['Starter Bread'],
-            className: choice || 'warrior'
-        };
-
-        activeGames.set(message.author.id, gameState);
-
-        const startEmbed = new EmbedBuilder()
-            .setColor('#e91e63')
-            .setTitle(`🏰 ESCAPE: ROOM ${gameState.room}`)
-            .setDescription(`You are a **${gameState.className.toUpperCase()}**. You stand before a heavy iron door. Behind you, the dungeon ceiling is collapsing!`)
-            .addFields(
-                { name: '❤️ Health', value: `${gameState.hp}/${gameState.maxHp}`, inline: true },
-                { name: '⚔️ Attack', value: `${gameState.atk}`, inline: true },
-                { name: '💰 Gold', value: `${gameState.gold}`, inline: true }
+                { name: '👨‍👩‍👧 Family & Identity', value: 'Niece/Nephew & Pronouns', inline: true },
+                { name: '🎂 Age & Specials', value: 'Age Groups & Special Access', inline: true },
+                { name: '🌈 Appearance', value: 'Choose your name color', inline: false }
             );
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('room_advance').setLabel('Kick Door Open').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('room_search').setLabel('Search Rubble').setStyle(ButtonStyle.Secondary)
+        // MENU 1: FAMILY & IDENTITY
+        const menu1 = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('group_family_identity')
+                .setPlaceholder('👨‍👩‍👧 Family & 👤 Identity')
+                .addOptions(
+                    { label: 'Niece', value: '1385412634748260423', emoji: '👧' },
+                    { label: 'Nephew', value: '1385412386793717780', emoji: '👦' },
+                    { label: 'He/Him', value: '1385044928375029780', emoji: '🔹' },
+                    { label: 'She/Her', value: '1385044992866914427', emoji: '🌸' },
+                    { label: 'They/Them', value: '1385045047791325285', emoji: '✨' },
+                    { label: 'Ask for Pronouns', value: '1385045182155722872', emoji: '💬' }
+                )
         );
 
-        const msg = await message.reply({ embeds: [startEmbed], components: [row] });
+        // MENU 2: AGE & PINGS
+        const menu2 = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('group_age_pings')
+                .setPlaceholder('🎂 Age Group & 🔔 Pings')
+                .addOptions(
+                    ['13', '14', '15', '16', '17', '18+'].map(age => ({
+                        label: `Age ${age}`, value: `ID_AGE_${age.replace('+', '')}`, emoji: '🎂'
+                    })).concat([
+                        { label: 'Chat Revive', value: '1402280746273734859', emoji: '🔔' }
+                    ])
+                )
+        );
 
-        // --- 🖱️ INTERACTIVE COLLECTOR (No separate handler needed) ---
-        const collector = msg.createMessageComponentCollector({ 
-            componentType: ComponentType.Button, 
-            time: 60000 
+        // MENU 3: SPECIAL ROLES
+        const menu3 = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('group_specials')
+                .setPlaceholder('✨ Special Roles')
+                .addOptions(
+                    { label: 'Special Access 1', value: '1474660849447866410', emoji: '💎' },
+                    { label: 'Special Access 2', value: '1477694222307168326', emoji: '🌟' },
+                    { label: 'Special Access 3', value: '1477700900138254608', emoji: '🔥' }
+                )
+        );
+
+        // MENU 4: APPEARANCE (COLORS)
+        const menu4 = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('group_colors')
+                .setPlaceholder('🌈 Appearance - Colors')
+                .addOptions([
+                    { label: 'Red', value: '1441761480923152564', emoji: '🔴' },
+                    { label: 'Cyan', value: '1444433605274239128', emoji: '🐋' },
+                    { label: 'Yellow', value: '1441762293611495444', emoji: '🟡' },
+                    { label: 'Green', value: '1441761726323494983', emoji: '🟢' },
+                    { label: 'Blue', value: '1441761656186212422', emoji: '🔵' },
+                    { label: 'Purple', value: '1441761788784803860', emoji: '🟣' },
+                    { label: 'Pink', value: '1441761972562427995', emoji: '🌸' }
+                ])
+        );
+
+        return interaction.reply({ 
+            embeds: [roleEmbed], 
+            components: [menu1, menu2, menu3, menu4] 
         });
+    }
 
-        collector.on('collect', async i => {
-            if (i.user.id !== message.author.id) return i.reply({ content: "Not your game.", ephemeral: true });
+    // 2. THE ROLE HANDLER
+    if (interaction.isStringSelectMenu()) {
+        const roleId = interaction.values[0];
+        
+        // Block if you haven't put your IDs in yet
+        if (roleId.startsWith('ID_')) {
+            return interaction.reply({ content: "❌ **Config Error:** You need to replace the `ID_` placeholders in the code with your actual Discord Role IDs!", ephemeral: true });
+        }
 
-            if (i.customId === 'room_advance') {
-                const dmg = Math.floor(Math.random() * 15);
-                gameState.hp -= dmg;
-                gameState.room++;
+        const role = interaction.guild.roles.cache.get(roleId);
+        if (!role) return interaction.reply({ content: "❌ Role not found. (Check ID or Permissions)", ephemeral: true });
 
-                if (gameState.hp <= 0) {
-                    activeGames.delete(i.user.id);
-                    return i.update({ content: '💀 **Wasted.** The dungeon claimed you.', embeds: [], components: [] });
-                }
-
-                const nextRoom = createSystemEmbed(`🚪 ROOM ${gameState.room}`, `You burst through! The door hit you for **${dmg} DMG**, but you're moving forward.\n\nHP: ${gameState.hp}/${gameState.maxHp}`);
-                await i.update({ embeds: [nextRoom] });
+        try {
+            if (interaction.member.roles.cache.has(roleId)) {
+                await interaction.member.roles.remove(roleId);
+                return interaction.reply({ content: `✅ Removed role: **${role.name}**`, ephemeral: true });
+            } else {
+                await interaction.member.roles.add(roleId);
+                return interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
             }
-
-            if (i.customId === 'room_search') {
-                const found = Math.random() > 0.5 ? 20 : 0;
-                gameState.gold += found;
-                await i.reply({ content: `🔍 You found ${found} gold in the dirt!`, ephemeral: true });
-            }
-        });
-
-        collector.on('end', () => {
-            if (activeGames.has(message.author.id)) {
-                activeGames.delete(message.author.id);
-            }
-        });
+        } catch (err) {
+            return interaction.reply({ content: "❌ I can't manage that role. Ensure my role is **above** the others in Server Settings!", ephemeral: true });
+        }
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
