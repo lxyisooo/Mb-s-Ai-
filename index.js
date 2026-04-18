@@ -29,7 +29,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.on('interactionCreate', async (interaction) => {
     
-    // 1. TRIGGER THE SETUP
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roles') {
         const roleEmbed = new EmbedBuilder()
             .setTitle('💫 Community Role Center')
@@ -39,7 +38,8 @@ client.on('interactionCreate', async (interaction) => {
                 { name: '👨‍👩‍👧 Family & Identity', value: 'Niece/Nephew & Pronouns', inline: true },
                 { name: '🎂 Age & Specials', value: 'Age Groups & Special Access', inline: true },
                 { name: '🌈 Appearance', value: 'Choose your name color', inline: false }
-            );
+            )
+            .setFooter({ text: '⚠️ 17-18+ must verify @ mods' });
 
         // MENU 1: FAMILY & IDENTITY
         const menu1 = new ActionRowBuilder().addComponents(
@@ -56,17 +56,17 @@ client.on('interactionCreate', async (interaction) => {
                 )
         );
 
-        // MENU 2: AGE & PINGS
+        // MENU 2: AGE (SPLIT FOR YOU) & PINGS
         const menu2 = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId('group_age_pings')
                 .setPlaceholder('🎂 Age Group & 🔔 Pings')
                 .addOptions(
-                    ['13', '14', '15', '16', '17', '18+'].map(age => ({
-                        label: `Age ${age}`, value: `ID_AGE_${age.replace('+', '')}`, emoji: '🎂'
-                    })).concat([
-                        { label: 'Chat Revive', value: '1402280746273734859', emoji: '🔔' }
-                    ])
+                    { label: 'Age 13', value: '1447238138413187188', emoji: '🎂' },
+                    { label: 'Age 14', value: '1447238234173079817', emoji: '🎂' },
+                    { label: 'Age 15', value: '1447238264846291027', emoji: '🎂' },
+                    { label: 'Age 16', value: '1447238292377440487', emoji: '🎂' },
+                    { label: 'Chat Revive', value: '1402280746273734859', emoji: '🔔' }
                 )
         );
 
@@ -108,13 +108,13 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isStringSelectMenu()) {
         const roleId = interaction.values[0];
         
-        // Block if you haven't put your IDs in yet
-        if (roleId.startsWith('ID_')) {
-            return interaction.reply({ content: "❌ **Config Error:** You need to replace the `ID_` placeholders in the code with your actual Discord Role IDs!", ephemeral: true });
+        // Safety check so the bot doesn't crash if you forget an ID
+        if (roleId.includes('PASTE_ID')) {
+            return interaction.reply({ content: "⚠️ One of these IDs hasn't been set up in the code yet!", ephemeral: true });
         }
 
         const role = interaction.guild.roles.cache.get(roleId);
-        if (!role) return interaction.reply({ content: "❌ Role not found. (Check ID or Permissions)", ephemeral: true });
+        if (!role) return interaction.reply({ content: "❌ Role not found in the server.", ephemeral: true });
 
         try {
             if (interaction.member.roles.cache.has(roleId)) {
@@ -125,7 +125,7 @@ client.on('interactionCreate', async (interaction) => {
                 return interaction.reply({ content: `✅ Added role: **${role.name}**`, ephemeral: true });
             }
         } catch (err) {
-            return interaction.reply({ content: "❌ I can't manage that role. Ensure my role is **above** the others in Server Settings!", ephemeral: true });
+            return interaction.reply({ content: "❌ Permission Denied! Check role hierarchy.", ephemeral: true });
         }
     }
 });
