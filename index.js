@@ -14,16 +14,24 @@ const commandFiles = fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
 const commandsData = [];
 
 for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  client.commands.set(command.data.name, command);
-  commandsData.push(command.data.toJSON());
+  const filePath = path.join(__dirname, 'commands', file);
+  const command = require(filePath);
+
+  // SAFETY CHECK: This prevents the "Cannot read properties of undefined (reading 'name')" error
+  if (command && command.data && command.data.name) {
+      client.commands.set(command.data.name, command);
+      commandsData.push(command.data.toJSON());
+      console.log(`✅ Loaded command: ${command.data.name}`);
+  } else {
+      console.log(`⚠️ Skipped ${file}: Missing "data" or "name" property.`);
+  }
 }
 
 client.once('ready', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
 
-  // Register slash commands
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  // Use TOKEN (matching your login variable)
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   try {
     await rest.put(
       Routes.applicationCommands(client.user.id),
@@ -35,8 +43,13 @@ client.once('ready', async () => {
   }
 
   // Start NPC customer simulation loop
-  const { simulateCustomers } = require('./systems/customerEngine');
-  setInterval(() => simulateCustomers(client), 30000); // every 30s
+  // Wrapped in a try-catch so the whole bot doesn't die if the engine has a bug
+  try {
+    const { simulateCustomers } = require('./systems/customerEngine');
+    setInterval(() => simulateCustomers(client), 30000); 
+  } catch (err) {
+    console.error("Customer Engine Error:", err.message);
+  }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -58,4 +71,5 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+// Using TOKEN to match Render environment variables
 client.login(process.env.TOKEN);
