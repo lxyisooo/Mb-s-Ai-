@@ -1,12 +1,11 @@
 {
-  "name": "war-rpg-bot",
-  "version": "1.4.0",
-  "description": "Full RPG War Bot for Discord",
+  "name": ".gg/houseofmb",
+  "version": "3.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "discord.js": "^14.11.0"
-  }
+    "discord.js": "^14.11.0",
+    "mongoose": "^7.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "scripts": { "start": "node index.js" }
 }
