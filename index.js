@@ -1,173 +1,135 @@
-// Load environment variables (ESM-safe)
-import 'dotenv/config';
-
-import {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  REST,
-  Routes
-} from 'discord.js';
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+// Using a Map for stats (Note: Resets on bot restart unless using a DB)
+const players = new Map();
+const PREFIX = '!';
 
-/* ─────────────── 🛡️ SLASH COMMAND REGISTRATION ─────────────── */
-
-const commands = [
-  {
-    name: 'setup-roles',
-    description: 'Deploys the full community role interface'
-  }
-];
-
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-(async () => {
-  try {
-    console.log('🔄 Deploying Slash Commands...');
-    await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commands }
-    );
-    console.log('✅ Commands Synced!');
-  } catch (err) {
-    console.error(err);
-  }
-})();
-
-/* ─────────────── 🤖 INTERACTIONS ─────────────── */
-
-client.on('interactionCreate', async (interaction) => {
-
-  /* ── SLASH COMMAND ── */
-  if (interaction.isChatInputCommand() && interaction.commandName === 'setup-roles') {
-
-    const roleEmbed = new EmbedBuilder()
-      .setTitle('💫 Community Role Center')
-      .setDescription('Select your roles below to personalize your profile and get notified!')
-      .setColor('#2b2d31')
-      .addFields(
-        { name: '👨‍👩‍👧 Family & Identity', value: 'Niece/Nephew & Pronouns', inline: true },
-        { name: '🎂 Age & Specials', value: 'Age Groups & Special Access', inline: true },
-        { name: '🌈 Appearance', value: 'Choose your name color', inline: false }
-      )
-      .setFooter({ text: '⚠️ 17–18+ must verify @ mods' });
-
-    const menu1 = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('group_family_identity')
-        .setPlaceholder('👨‍👩‍👧 Family & 👤 Identity')
-        .addOptions(
-          { label: 'Niece', value: '1385412634748260423', emoji: '👧' },
-          { label: 'Nephew', value: '1385412386793717780', emoji: '👦' },
-          { label: 'He/Him', value: '1385044928375029780', emoji: '🔹' },
-          { label: 'She/Her', value: '1385044992866914427', emoji: '🌸' },
-          { label: 'They/Them', value: '1385045047791325285', emoji: '✨' },
-          { label: 'Ask for Pronouns', value: '1385045182155722872', emoji: '💬' }
-        )
-    );
-
-    const menu2 = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('group_age_pings')
-        .setPlaceholder('🎂 Age Group & 🔔 Pings')
-        .addOptions(
-          { label: 'Age 13', value: '1447238138413187188', emoji: '🎂' },
-          { label: 'Age 14', value: '1447238234173079817', emoji: '🎂' },
-          { label: 'Age 15', value: '1447238264846291027', emoji: '🎂' },
-          { label: 'Age 16', value: '1447238292377440487', emoji: '🎂' },
-          { label: 'Chat Revive', value: '1402280746273734859', emoji: '🔔' }
-        )
-    );
-
-    /* ✅ FIXED MENU 3 */
-    const menu3 = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('group_specials')
-        .setPlaceholder('✨ Special Roles')
-        .addOptions(
-          {
-            label: 'Tuffest People in Chat',
-            value: '1474660849447866410',
-            emoji: { id: '1472221896044052480' }
-          },
-          {
-            label: 'Doritos',
-            value: '1477694222307168326',
-            emoji: { id: '1472222233215893555' }
-          },
-          {
-            label: 'Morvani Automotive LLC',
-            value: '1477700900138254608',
-            emoji: { id: '1472215799409279110' }
-          }
-        )
-    );
-
-    const menu4 = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('group_colors')
-        .setPlaceholder('🌈 Appearance – Colors')
-        .addOptions(
-          { label: 'Red', value: '1441761480923152564', emoji: '🔴' },
-          { label: 'Cyan', value: '1444433605274239128', emoji: '🐋' },
-          { label: 'Yellow', value: '1441762293611495444', emoji: '🟡' },
-          { label: 'Green', value: '1441761726323494983', emoji: '🟢' },
-          { label: 'Blue', value: '1441761656186212422', emoji: '🔵' },
-          { label: 'Purple', value: '1441761788784803860', emoji: '🟣' },
-          { label: 'Pink', value: '1441761972562427995', emoji: '🌸' }
-        )
-    );
-
-    /* ✅ FIX: prevent double-response crash */
-    if (interaction.replied || interaction.deferred) return;
-
-    return interaction.reply({
-      embeds: [roleEmbed],
-      components: [menu1, menu2, menu3, menu4]
-    });
-  }
-
-  /* ── ROLE HANDLER ── */
-  if (interaction.isStringSelectMenu()) {
-
-    if (interaction.replied || interaction.deferred) return;
-
-    const roleId = interaction.values[0];
-    const role = interaction.guild.roles.cache.get(roleId);
-
-    if (!role) {
-      return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
+const getProfile = (id) => {
+    if (!players.has(id)) {
+        players.set(id, { 
+            hp: 100, maxHp: 100, xp: 0, level: 1, 
+            wins: 0, class: 'Civilian', lastTrain: 0 
+        });
     }
+    return players.get(id);
+};
 
-    try {
-      const member = interaction.member;
-
-      if (member.roles.cache.has(roleId)) {
-        await member.roles.remove(roleId);
-        return interaction.reply({ content: `✅ Removed **${role.name}**`, ephemeral: true });
-      } else {
-        await member.roles.add(roleId);
-        return interaction.reply({ content: `✅ Added **${role.name}**`, ephemeral: true });
-      }
-
-    } catch (err) {
-      console.error(err);
-      return interaction.reply({
-        content: '❌ Permission denied. Check role hierarchy.',
-        ephemeral: true
-      });
-    }
-  }
+client.on('ready', () => {
+    console.log(`✅ ${client.user.tag} is online and ready for war!`);
 });
 
-client.login(TOKEN);
+client.on('messageCreate', async (message) => {
+    if (!message.content.startsWith(PREFIX) || message.author.bot) return;
+
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+    const user = getProfile(message.author.id);
+
+    // --- HELP COMMAND ---
+    if (command === 'help') {
+        const embed = new EmbedBuilder()
+            .setTitle('⚔️ War RPG - Command Center')
+            .setColor('#2b2d31')
+            .setDescription('Welcome to the frontline. No economy, just skill.')
+            .addFields(
+                { name: '👤 Identity', value: '`!class <type>` - Choose Infantry, Tank, or Ghost.\n`!stats` - Check your vitals.', inline: false },
+                { name: '🔥 Action', value: '`!attack @user` - Duel another player.\n`!train` - Heal and gain XP.', inline: false }
+            )
+            .setFooter({ text: 'Train hard, fight harder.' });
+        return message.reply({ embeds: [embed] });
+    }
+
+    // --- CLASS SELECTION ---
+    if (command === 'class') {
+        const classes = {
+            infantry: { name: 'Infantry', hp: 120, emoji: '🎖️' },
+            tank: { name: 'Tank', hp: 200, emoji: '🛡️' },
+            ghost: { name: 'Ghost', hp: 80, emoji: '👤' }
+        };
+        const choice = args[0]?.toLowerCase();
+        if (!classes[choice]) return message.reply("❌ Usage: `!class Infantry`, `!class Tank`, or `!class Ghost`.");
+
+        user.class = classes[choice].name;
+        user.maxHp = classes[choice].hp;
+        user.hp = user.maxHp;
+        return message.reply(`${classes[choice].emoji} You are now a **${user.class}**! HP set to **${user.hp}**.`);
+    }
+
+    // --- TRAINING & HEALING ---
+    if (command === 'train') {
+        const now = Date.now();
+        if (now - user.lastTrain < 45000) return message.reply("⏳ You are recovering. Wait 45s.");
+
+        const xpGain = 20;
+        user.xp += xpGain;
+        user.hp = Math.min(user.maxHp, user.hp + 30);
+        user.lastTrain = now;
+
+        let levelMsg = "";
+        if (user.xp >= user.level * 100) {
+            user.level++;
+            user.xp = 0;
+            levelMsg = "\n🆙 **LEVEL UP!** You are now more powerful.";
+        }
+
+        return message.reply(`🏋️ Training finished! +${xpGain} XP. HP is now **${user.hp}/${user.maxHp}**${levelMsg}`);
+    }
+
+    // --- COMBAT SYSTEM ---
+    if (command === 'attack') {
+        const targetUser = message.mentions.users.first();
+        if (!targetUser || targetUser.id === message.author.id) return message.reply("⚠️ Mention an enemy to duel.");
+        
+        const target = getProfile(targetUser.id);
+        if (user.hp <= 0) return message.reply("❌ You are downed! Use `!train` to get back up.");
+        if (target.hp <= 0) return message.reply("❌ That enemy is already unconscious.");
+
+        const myDmg = Math.floor(Math.random() * 25) + 5;
+        const enemyDmg = Math.floor(Math.random() * 15);
+
+        target.hp -= myDmg;
+        user.hp -= enemyDmg;
+
+        const battleEmbed = new EmbedBuilder()
+            .setTitle('⚔️ Combat Engagement')
+            .setColor(user.hp > 0 ? '#57f287' : '#ed4245')
+            .addFields(
+                { name: 'You', value: `Dealt **${myDmg}** dmg`, inline: true },
+                { name: 'Enemy', value: `Dealt **${enemyDmg}** dmg`, inline: true },
+                { name: 'Health Remaining', value: `You: **${Math.max(0, user.hp)}** | Them: **${Math.max(0, target.hp)}**` }
+            );
+
+        if (target.hp <= 0) {
+            user.xp += 60;
+            user.wins++;
+            battleEmbed.setDescription(`🏆 **KNOCKOUT!** You defeated ${targetUser.username}!`);
+        }
+
+        return message.reply({ embeds: [battleEmbed] });
+    }
+
+    // --- STATS ---
+    if (command === 'stats') {
+        const embed = new EmbedBuilder()
+            .setTitle(`${message.author.username}'s Dossier`)
+            .setColor('#2b2d31')
+            .addFields(
+                { name: 'Level', value: `${user.level} (${user.class})`, inline: true },
+                { name: 'Wins', value: `${user.wins}`, inline: true },
+                { name: 'HP', value: `❤️ ${user.hp}/${user.maxHp}`, inline: false },
+                { name: 'XP Progress', value: `⭐ ${user.xp}/${user.level * 100}`, inline: false }
+            );
+        return message.reply({ embeds: [embed] });
+    }
+});
+
+// Use process.env for security on GitHub/Railway
+client.login(process.env.TOKEN);
