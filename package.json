@@ -1,17 +1,12 @@
 {
-  "name": "community-role-bot",
-  "version": "1.0.0",
-  "description": "Discord role menu bot with slash commands",
-  "type": "module",
+  "name": "war-rpg-bot",
+  "version": "1.4.0",
+  "description": "Full RPG War Bot for Discord",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.11.0"
   }
 }
