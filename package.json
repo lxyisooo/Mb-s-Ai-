@@ -1,15 +1,15 @@
 {
   "name": "mb-fast-food-tycoon",
   "version": "1.0.0",
-  "description": "Fast Food Tycoon RPG",
+  "description": "Fast Food Tycoon RPG for Discord",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.11.0",
-    "dotenv": "^16.3.1",
-    "openai": "^4.0.0"
+    "mongoose": "^7.3.0",
+    "dotenv": "^16.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
