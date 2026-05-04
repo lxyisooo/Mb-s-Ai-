@@ -1,455 +1,555 @@
+const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ComponentType } = require('discord.js');
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
-
 const token = process.env.DISCORD_TOKEN;
+const PREFIX = '?';
 
-// Validate token exists
-if (!token) {
-  console.error('❌ DISCORD_TOKEN not found in environment variables');
-  console.error('Please create a .env file with: DISCORD_TOKEN=your_token_here');
-  process.exit(1);
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds, 
+    GatewayIntentBits.GuildMessages, 
+    GatewayIntentBits.MessageContent, 
+    GatewayIntentBits.DirectMessages
+  ] 
+});
+
+// =============== ADVANCED DATA MODELS ===============
+
+class Achievement {
+  constructor(name, description, icon) {
+    this.name = name;
+    this.description = description;
+    this.icon = icon;
+    this.unlocked_at = new Date();
+  }
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages] });
+class Investment {
+  constructor(type, amount, interest_rate) {
+    this.id = Math.random().toString(36).substring(7);
+    this.type = type; // 'stocks', 'bonds', 'property'
+    this.amount = amount;
+    this.interest_rate = interest_rate;
+    this.created_date = new Date();
+    this.returns = 0;
+  }
 
-// =============== DATA MODELS ===============
-class Staff {
-  constructor(name, role, speed, quality, wage) {
+  calculateReturns() {
+    const days = (new Date() - this.created_date) / (1000 * 60 * 60 * 24);
+    this.returns = Math.floor(this.amount * (this.interest_rate / 100) * (days / 365));
+    return this.returns;
+  }
+}
+
+class Employee {
+  constructor(name, role, experience = 1) {
+    this.id = Math.random().toString(36).substring(7);
     this.name = name;
     this.role = role;
-    this.speed = speed;
-    this.quality = quality;
-    this.wage = wage;
-  }
-}
-
-class Restaurant {
-  constructor() {
+    this.experience = experience;
     this.level = 1;
-    this.balance = 500;
-    this.supply = 100;
-    this.base_demand = 10;
-    this.staff = [];
+    this.salary = this.getSalaryByRole(role);
+    this.morale = 100;
+    this.hired_date = new Date();
+    this.performance = Math.random() * 0.3 + 0.7;
+    this.total_revenue_generated = 0;
+    this.skill_points = 0;
+    
+    if (role === 'cashier') {
+      this.speed = 8;
+      this.quality = 6;
+      this.customer_satisfaction = 7;
+    } else if (role === 'cook') {
+      this.speed = 5;
+      this.quality = 9;
+      this.customer_satisfaction = 8;
+    } else if (role === 'manager') {
+      this.speed = 7;
+      this.quality = 8;
+      this.customer_satisfaction = 9;
+    } else if (role === 'delivery_driver') {
+      this.speed = 9;
+      this.quality = 6;
+      this.customer_satisfaction = 7;
+    } else if (role === 'marketing_specialist') {
+      this.speed = 7;
+      this.quality = 8;
+      this.customer_satisfaction = 9;
+    } else if (role === 'chef') {
+      this.speed = 4;
+      this.quality = 10;
+      this.customer_satisfaction = 10;
+    }
+  }
+
+  getSalaryByRole(role) {
+    const salaries = {
+      'cashier': 15,
+      'cook': 25,
+      'manager': 45,
+      'delivery_driver': 20,
+      'marketing_specialist': 30,
+      'chef': 60
+    };
+    return salaries[role] || 15;
+  }
+
+  giveBenefit() {
+    this.morale = Math.min(100, this.morale + 25);
+    this.performance = Math.min(1.0, this.performance + 0.15);
+  }
+
+  reduceWellbeing() {
+    this.morale = Math.max(0, this.morale - 8);
+    if (this.morale < 40) this.performance *= 0.8;
+  }
+
+  levelUp() {
+    this.level += 1;
+    this.salary = Math.floor(this.salary * 1.15);
+    this.performance = Math.min(1.0, this.performance + 0.1);
+    this.speed = Math.min(10, this.speed + 1);
+    this.quality = Math.min(10, this.quality + 1);
+  }
+}
+
+class MenuItem {
+  constructor(name, cost, selling_price, category = 'general') {
+    this.id = Math.random().toString(36).substring(7);
+    this.name = name;
+    this.cost = cost;
+    this.selling_price = selling_price;
+    this.category = category;
+    this.popularity = 50;
+    this.orders_sold = 0;
+  }
+
+  profit() {
+    return this.selling_price - this.cost;
+  }
+}
+
+class Shop {
+  constructor() {
+    this.id = Math.random().toString(36).substring(7);
+    this.items = {
+      'Upgrade Speed': { cost: 500, effect: 'speed', value: 0.1 },
+      'Upgrade Quality': { cost: 500, effect: 'quality', value: 0.1 },
+      'Staff Training': { cost: 300, effect: 'morale', value: 20 },
+      'Marketing Campaign': { cost: 1000, effect: 'reputation', value: 10 },
+      'Premium Supplies': { cost: 800, effect: 'ingredient_quality', value: 0.2 },
+      'Loyalty Program': { cost: 2000, effect: 'customer_retention', value: 0.15 },
+      'Premium Kitchen Equipment': { cost: 3000, effect: 'cooking_speed', value: 0.25 },
+      'Digital Ordering System': { cost: 1500, effect: 'order_efficiency', value: 0.2 }
+    };
+  }
+
+  getItemsList() {
+    return Object.entries(this.items).map(([name, data]) => ({
+      label: `${name} - $${data.cost}`,
+      value: name,
+      description: `Effect: +${data.value * 100}${data.effect === 'morale' ? '%' : 'x'}`
+    }));
+  }
+}
+
+class Location {
+  constructor(name, city, type = 'franchise') {
+    this.id = Math.random().toString(36).substring(7);
+    this.name = name;
+    this.city = city;
+    this.type = type;
+    this.level = 1;
+    this.balance = 5000;
+    this.revenue_today = 0;
+    this.revenue_all_time = 0;
+    this.reputation = 75;
+    this.employees = [];
+    this.inventory = {};
+    this.menu_items = this.generateMenu();
     this.last_tick = new Date();
+    this.operating_hours = { open: 8, close: 22 };
+    this.upgrades = [];
+    this.customer_count_today = 0;
+    this.avg_satisfaction = 80;
+    this.speed_multiplier = 1.0;
+    this.quality_multiplier = 1.0;
+    this.is_open = true;
+    this.events = [];
+  }
+
+  generateMenu() {
+    const items = [
+      new MenuItem('Classic Burger', 3, 9, 'burgers'),
+      new MenuItem('Crispy Chicken', 2.5, 8, 'chicken'),
+      new MenuItem('Fries', 1, 4, 'sides'),
+      new MenuItem('Soft Drink', 0.5, 2.5, 'drinks'),
+      new MenuItem('Milkshake', 1.5, 6, 'drinks'),
+      new MenuItem('Premium Steak Burger', 5, 15, 'burgers'),
+      new MenuItem('Veggie Wrap', 2, 7, 'wraps'),
+      new MenuItem('Family Meal', 8, 25, 'combos'),
+      new MenuItem('Grilled Chicken Sandwich', 3.5, 10, 'chicken'),
+      new MenuItem('Ice Cream', 1, 4, 'desserts')
+    ];
+    const menu = {};
+    items.forEach(item => menu[item.name] = item);
+    return menu;
+  }
+
+  addRevenue(amount) {
+    this.balance += amount;
+    this.revenue_today += amount;
+    this.revenue_all_time += amount;
+  }
+
+  payEmployees() {
+    let total_paid = 0;
+    this.employees.forEach(emp => {
+      const payment = emp.salary;
+      this.balance -= payment;
+      total_paid += payment;
+    });
+    return total_paid;
+  }
+
+  purchaseItem(itemName) {
+    const item = this.menu_items[itemName];
+    if (!item) return null;
+    this.balance -= item.cost;
+    item.orders_sold += 1;
+    return item.profit();
+  }
+
+  toggleOpen() {
+    this.is_open = !this.is_open;
+  }
+}
+
+class Business {
+  constructor(userId) {
+    this.user_id = userId;
+    this.business_name = "Unnamed Empire";
+    this.business_type = "restaurant";
+    this.locations = [];
+    this.total_balance = 10000;
+    this.loan = 0;
+    this.loan_interest = 0.05;
+    this.prestige = 0;
+    this.level = 1;
+    this.created_date = new Date();
+    this.marketing_budget = 0;
     this.reputation = 50;
+    this.total_employees = 0;
+    this.shop = new Shop();
+    this.setup_complete = false;
+    this.total_revenue = 0;
+    this.achievements = [];
+    this.investments = [];
+    this.franchise_agreement = false;
+    this.franchises_owned = 0;
+    this.total_customers_served = 0;
+    this.daily_profit_goal = 500;
+    this.statistics = {
+      highest_daily_revenue: 0,
+      total_upgrades: 0,
+      total_hires: 0,
+      total_employees_fired: 0
+    };
+  }
+
+  getTotalRevenue() {
+    return this.locations.reduce((sum, loc) => sum + loc.revenue_today, 0);
+  }
+
+  getTotalBalance() {
+    return this.total_balance + this.locations.reduce((sum, loc) => sum + loc.balance, 0);
+  }
+
+  getTotalEmployees() {
+    return this.locations.reduce((sum, loc) => sum + loc.employees.length, 0);
+  }
+
+  addPrestige(amount) {
+    this.prestige += amount;
+    this.level = Math.floor(1 + this.prestige / 100);
+  }
+
+  applyForFranchise(cost) {
+    if (this.getTotalBalance() >= cost) {
+      this.total_balance -= cost;
+      this.franchise_agreement = true;
+      return true;
+    }
+    return false;
+  }
+
+  openFranchise(cost) {
+    if (this.getTotalBalance() >= cost && this.franchise_agreement) {
+      this.total_balance -= cost;
+      this.franchises_owned += 1;
+      return true;
+    }
+    return false;
+  }
+
+  addAchievement(name, description, icon) {
+    if (!this.achievements.find(a => a.name === name)) {
+      this.achievements.push(new Achievement(name, description, icon));
+      return true;
+    }
+    return false;
   }
 }
 
-const players = {};
+// =============== REALISTIC DATA ===============
 
-// =============== HELPERS ===============
-function getRestaurant(userId) {
-  if (!players[userId]) {
-    players[userId] = new Restaurant();
+const EMPLOYEE_NAMES = {
+  first: ["Marcus", "Jessica", "David", "Sarah", "James", "Emma", "Michael", "Olivia", "Chris", "Sophia", "Robert", "Ava", "Daniel", "Isabella", "Matthew", "Charlotte", "Andrew", "Amelia", "Joseph", "Mia", "William", "Harper", "Benjamin", "Evelyn"],
+  last: ["Johnson", "Smith", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White"]
+};
+
+const BUSINESS_TYPES = {
+  'restaurant': '🍽️ Restaurant - Fine dining, higher prices',
+  'fast_food': '🍔 Fast Food - Quick service, high volume',
+  'cafe': '☕ Café - Beverages & pastries, trendy',
+  'catering': '🎉 Catering - Events & bulk orders'
+};
+
+const LOCATION_NAMES = {
+  flagship: ["Downtown Hub", "Central Station", "Main Street", "Premier Location", "Grand Central"],
+  franchise: ["Express", "Quick Stop", "Urban Eats", "City Branch", "Speedy Service"],
+  kiosk: ["Corner Spot", "Mall Kiosk", "Quick Grab", "Fast Lane"]
+};
+
+const CITIES = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Miami", "Boston", "Seattle", "Denver", "Atlanta", "Las Vegas", "Portland"];
+
+const SUPPLIERS = [
+  { name: "Premium Foods Co", quality: 0.95, cost_multiplier: 1.3, delivery_time: 2 },
+  { name: "Budget Supplies", quality: 0.65, cost_multiplier: 0.65, delivery_time: 1 },
+  { name: "Local Farms", quality: 0.98, cost_multiplier: 1.5, delivery_time: 3 },
+  { name: "Wholesale Giants", quality: 0.8, cost_multiplier: 0.75, delivery_time: 2 },
+  { name: "Organic Direct", quality: 0.92, cost_multiplier: 1.4, delivery_time: 4 }
+];
+
+const RANDOM_EVENTS = [
+  { name: "Food Safety Inspection", impact: -50, type: 'negative' },
+  { name: "Local Food Festival", impact: 200, type: 'positive' },
+  { name: "Celebrity Visit", impact: 100, type: 'positive' },
+  { name: "Supply Shortage", impact: -100, type: 'negative' },
+  { name: "Media Coverage", impact: 80, type: 'positive' }
+];
+
+// =============== GAME STATE ===============
+
+const businesses = {};
+
+function getOrCreateBusiness(userId) {
+  if (!businesses[userId]) {
+    businesses[userId] = new Business(userId);
   }
-  return players[userId];
+  return businesses[userId];
 }
 
-function marketMultiplier() {
-  return parseFloat((Math.random() * 0.4 + 0.8).toFixed(2));
+function generateEmployeeName() {
+  const first = EMPLOYEE_NAMES.first[Math.floor(Math.random() * EMPLOYEE_NAMES.first.length)];
+  const last = EMPLOYEE_NAMES.last[Math.floor(Math.random() * EMPLOYEE_NAMES.last.length)];
+  return `${first} ${last}`;
 }
 
-function staffEfficiency(res) {
-  if (res.staff.length === 0) {
-    return [1.0, 1.0];
-  }
-  const speedSum = res.staff.reduce((sum, s) => sum + s.speed, 0);
-  const qualitySum = res.staff.reduce((sum, s) => sum + s.quality, 0);
-  const speed = Math.max(0.5, speedSum / (10 * res.staff.length));
-  const quality = Math.max(0.5, qualitySum / (10 * res.staff.length));
-  return [speed, quality];
-}
-
-function generateCustomer(res) {
-  const names = ["Alex", "Taylor", "Jordan", "Sam", "Casey", "Morgan", "Jamie", "Riley", "Chris", "Drew", "Parker", "Skyler", "Quinn", "Avery", "Harper", "Reese"];
-  const personalities = ["chill", "in a hurry", "picky", "foodie", "budget-conscious", "generous", "grumpy"];
-
+function generateCustomer(location) {
+  const names = ["Alex", "Taylor", "Jordan", "Sam", "Casey", "Morgan", "Jamie", "Riley", "Chris", "Drew"];
+  const personalities = ["😋 Hungry", "⏰ In a hurry", "😤 Picky", "😊 Happy", "😴 Tired", "👑 VIP"];
+  
   return {
     name: names[Math.floor(Math.random() * names.length)],
-    hunger: Math.floor(Math.random() * 60) + 40,
-    patience: Math.floor(Math.random() * 90) + 30,
-    tip_chance: Math.floor(Math.random() * 60) + 20,
-    spend_min: 5 * res.level,
-    spend_max: 10 * res.level + Math.floor(res.reputation / 5),
     personality: personalities[Math.floor(Math.random() * personalities.length)],
+    hunger_level: Math.floor(Math.random() * 100),
+    patience: Math.floor(Math.random() * 100),
+    budget: Math.floor(Math.random() * 30 + 5) * location.level
   };
 }
 
-function simulateTick(res) {
+function simulateLocationTick(location) {
   const now = new Date();
-  const elapsed = (now - res.last_tick) / 1000;
+  const elapsed = (now - location.last_tick) / 1000;
   
   if (elapsed < 30) return;
   
-  const ticks = Math.floor(elapsed / 30);
-  res.last_tick = now;
+  location.last_tick = now;
 
-  for (let t = 0; t < ticks; t++) {
-    // Pay wages
-    const wages = res.staff.reduce((sum, s) => sum + s.wage, 0);
-    res.balance -= wages;
+  if (!location.is_open) return;
 
-    const [speedEff, qualityEff] = staffEfficiency(res);
-    const mm = marketMultiplier();
-    const effectiveDemand = Math.floor(res.base_demand * (0.8 + qualityEff) * mm);
-    let customersServed = 0;
+  const payroll = location.payEmployees();
+  location.balance -= payroll;
 
-    for (let i = 0; i < effectiveDemand; i++) {
-      if (res.supply <= 0) break;
+  const hour = now.getHours();
+  const is_open = hour >= location.operating_hours.open && hour < location.operating_hours.close;
+  
+  if (!is_open) return;
 
-      const cust = generateCustomer(res);
-      const serveChance = Math.min(1.0, (cust.patience / 60) * speedEff);
+  const customer_generation_rate = location.level * (location.reputation / 100) * 8;
+  const customers = Math.floor(Math.random() * customer_generation_rate) + 1;
 
-      if (Math.random() > serveChance) {
-        res.reputation = Math.max(0, res.reputation - 1);
-        continue;
+  for (let i = 0; i < customers; i++) {
+    const customer = generateCustomer(location);
+    
+    const avg_inventory = Object.values(location.inventory).reduce((a, b) => a + b, 0) / Object.keys(location.inventory).length || 0;
+    if (avg_inventory <= 0) break;
+
+    const avg_employee_speed = location.employees.length > 0
+      ? (location.employees.reduce((sum, e) => sum + e.speed * e.performance, 0) / location.employees.length) * location.speed_multiplier
+      : 3;
+    const avg_employee_quality = location.employees.length > 0
+      ? (location.employees.reduce((sum, e) => sum + e.quality * e.performance, 0) / location.employees.length) * location.quality_multiplier
+      : 5;
+
+    const serve_chance = Math.min(1.0, (avg_employee_speed / 10) * (customer.patience / 100));
+
+    if (Math.random() < serve_chance && customer.budget > 0) {
+      const menuItems = Object.values(location.menu_items);
+      const selectedItem = menuItems[Math.floor(Math.random() * menuItems.length)];
+      
+      const order_value = selectedItem.selling_price;
+      const cost = selectedItem.cost;
+      const profit = order_value - cost;
+
+      location.addRevenue(profit);
+      location.customer_count_today++;
+      selectedItem.orders_sold += 1;
+
+      const satisfaction = Math.min(100, 50 + (avg_employee_quality * 5) + (Math.random() * 30));
+      location.avg_satisfaction = (location.avg_satisfaction + satisfaction) / 2;
+
+      if (satisfaction > 80) {
+        const tip = Math.floor(Math.random() * 3 + 1);
+        location.addRevenue(tip);
       }
 
-      const spent = Math.floor(Math.random() * (cust.spend_max - cust.spend_min + 1)) + cust.spend_min;
-      const cost = Math.floor(spent * (Math.random() * 0.15 + 0.35));
-      const profit = spent - cost;
-
-      res.balance += profit;
-      res.supply -= 1;
-      customersServed += 1;
-
-      // Tips
-      const tipMult = 1 + (qualityEff - 1) * 0.5;
-      if (Math.random() * 100 < cust.tip_chance * tipMult) {
-        const tip = Math.floor(Math.random() * 5 + 1) * res.level;
-        res.balance += tip;
+      const items = Object.keys(location.inventory);
+      if (items.length > 0) {
+        const item = items[Math.floor(Math.random() * items.length)];
+        location.inventory[item] = Math.max(0, location.inventory[item] - 1);
       }
+    } else {
+      location.reputation = Math.max(0, location.reputation - 1);
     }
+  }
 
-    if (customersServed > 0) {
-      res.reputation = Math.min(100, res.reputation + 1);
-    }
+  if (location.avg_satisfaction > 85) {
+    location.reputation = Math.min(100, location.reputation + 1);
   }
 }
 
-function buildStatusEmbed(user, res) {
-  const [speedEff, qualityEff] = staffEfficiency(res);
+// =============== EMBED BUILDERS ===============
 
-  const staffText = res.staff.length === 0
-    ? "No staff hired yet."
-    : res.staff.map(s => `• ${s.name} (${s.role}) – SPD ${s.speed}, QLT ${s.quality}, Wage $${s.wage}`).join("\n");
+function buildProgressBar(current, max, length = 10) {
+  const percentage = current / max;
+  const filled = Math.floor(percentage * length);
+  return '█'.repeat(filled) + '░'.repeat(length - filled);
+}
+
+function buildSetupEmbed() {
+  return new EmbedBuilder()
+    .setTitle("🎉 Welcome to Business Tycoon!")
+    .setDescription("Let's set up your empire! Answer a few questions to get started.")
+    .setColor(0xFF6B35)
+    .setThumbnail('https://media.discordapp.net/attachments/1194280900903579649/1299564048898510960/image-removebg-preview.png?ex=671bf4c0&is=671aa340&size=large')
+    .addFields(
+      { name: "Step 1️⃣", value: "Choose your business type", inline: false },
+      { name: "Step 2️⃣", value: "Name your empire", inline: false },
+      { name: "Step 3️⃣", value: "Open your first location", inline: false }
+    )
+    .setFooter({ text: "Let's build something great! 🚀" });
+}
+
+function buildBusinessEmbed(user, business) {
+  const totalRevenue = business.getTotalRevenue();
+  const totalBalance = business.getTotalBalance();
+  const totalEmployees = business.getTotalEmployees();
+
+  const repBar = buildProgressBar(business.reputation, 100);
 
   const embed = new EmbedBuilder()
-    .setTitle(`🍔 ${user.username}'s Fast Food Empire`)
+    .setTitle(`${business.business_type === 'fast_food' ? '🍔' : business.business_type === 'cafe' ? '☕' : business.business_type === 'catering' ? '🎉' : '🍽️'} ${business.business_name}`)
+    .setColor(0xFF6B35)
+    .setThumbnail('https://media.discordapp.net/attachments/1194280900903579649/1299564048898510960/image-removebg-preview.png?ex=671bf4c0&is=671aa340&size=large')
+    .addFields(
+      { name: "💰 Total Balance", value: `$${totalBalance.toLocaleString()}`, inline: true },
+      { name: "📈 Today's Revenue", value: `$${totalRevenue.toLocaleString()}`, inline: true },
+      { name: "🏆 Level", value: String(business.level), inline: true },
+      { name: "⭐ Prestige", value: `${business.prestige}`, inline: true },
+      { name: "📊 Reputation", value: `${repBar} ${business.reputation}/100`, inline: true },
+      { name: "🏪 Locations", value: String(business.locations.length), inline: true },
+      { name: "👥 Total Employees", value: String(totalEmployees), inline: true },
+      { name: "💼 Business Type", value: BUSINESS_TYPES[business.business_type], inline: true },
+      { name: "🎖️ Achievements", value: String(business.achievements.length), inline: true },
+      { name: "📍 Locations", value: business.locations.length === 0 ? "No locations yet" : business.locations.map(loc => `**${loc.name}** (${loc.city}) Lvl ${loc.level} • $${loc.balance} • ⭐${loc.reputation}`).join('\n'), inline: false }
+    )
+    .setFooter({ text: "Keep building! 🚀" });
+
+  return embed;
+}
+
+function buildLocationEmbed(location) {
+  const employees_text = location.employees.length === 0
+    ? "No employees"
+    : location.employees.map(e => `• ${e.name} (${e.role}) Lvl${e.level} • Morale: ${e.morale}%`).slice(0, 5).join('\n');
+
+  const topMenuItems = Object.values(location.menu_items)
+    .sort((a, b) => b.orders_sold - a.orders_sold)
+    .slice(0, 3)
+    .map(item => `• ${item.name}: ${item.orders_sold} sold`)
+    .join('\n');
+
+  const repBar = buildProgressBar(location.reputation, 100);
+  const satisfactionBar = buildProgressBar(location.avg_satisfaction, 100);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🏪 ${location.name} - ${location.city}`)
+    .setColor(0x04B4D4)
+    .addFields(
+      { name: "Level", value: String(location.level), inline: true },
+      { name: "💰 Balance", value: `$${location.balance.toLocaleString()}`, inline: true },
+      { name: "📊 Today's Revenue", value: `$${location.revenue_today.toLocaleString()}`, inline: true },
+      { name: "⭐ Reputation", value: `${repBar} ${location.reputation}/100`, inline: true },
+      { name: "😊 Satisfaction", value: `${satisfactionBar} ${location.avg_satisfaction.toFixed(0)}%`, inline: true },
+      { name: "👥 Customers Today", value: String(location.customer_count_today), inline: true },
+      { name: "🔴 Status", value: location.is_open ? "🟢 OPEN" : "🔴 CLOSED", inline: true },
+      { name: "👔 Staff", value: employees_text || "No employees yet", inline: false },
+      { name: "🍔 Top Menu Items", value: topMenuItems || "No sales yet", inline: false }
+    );
+
+  return embed;
+}
+
+function buildShopEmbed() {
+  const shop = new Shop();
+  const items = Object.entries(shop.items)
+    .map(([name, data]) => `**${name}** - $${data.cost}\n💡 +${(data.value * 100).toFixed(0)}`)
+    .join('\n\n');
+
+  return new EmbedBuilder()
+    .setTitle("🏬 Premium Shop")
+    .setDescription("Upgrade your business with premium features!")
     .setColor(0xFFD700)
     .addFields(
-      { name: "Level", value: String(res.level), inline: true },
-      { name: "Balance", value: `$${res.balance}`, inline: true },
-      { name: "Supply", value: String(res.supply), inline: true },
-      { name: "Base demand", value: String(res.base_demand), inline: true },
-      { name: "Reputation", value: `${res.reputation}/100`, inline: true },
-      {
-        name: "Staff Efficiency",
-        value: `Speed: x${speedEff.toFixed(2)}\nQuality: x${qualityEff.toFixed(2)}`,
-        inline: true,
-      },
-      { name: "Staff", value: staffText, inline: false }
+      { name: "Available Items", value: items, inline: false }
     );
-
-  return embed;
 }
 
-function buildHelpEmbed(prefix) {
-  const embed = new EmbedBuilder()
-    .setTitle("🍟 Fast Food Tycoon Help")
-    .setDescription("Manage your fast food empire with both slash commands and prefix commands.")
-    .setColor(0xFFA500)
+function buildEmployeeEmbed(employee) {
+  const performanceBar = buildProgressBar(employee.performance * 100, 100);
+  const moraleBar = buildProgressBar(employee.morale, 100);
+
+  return new EmbedBuilder()
+    .setTitle(`👤 ${employee.name}`)
+    .setColor(0x9B59B6)
     .addFields(
-      {
-        name: "Core Commands",
-        value: `Slash / Prefix\n• \`/start\` / \`${prefix}start\` – create or view your empire\n• \`/status\` / \`${prefix}status\` – detailed stats\n• \`/buy_supply <amount>\` / \`${prefix}buy_supply <amount>\` – buy ingredients\n• \`/upgrade\` / \`${prefix}upgrade\` – upgrade restaurant\n• \`/hire_staff <role>\` / \`${prefix}hire_staff <role>\` – hire staff\n• \`/customers\` / \`${prefix}customers\` – preview NPC customers`,
-        inline: false,
-      },
-      {
-        name: "Staff Roles",
-        value: "cashier – fast service, average food\ncook – slower service, better quality & tips\nmanager – balanced, boosts both slightly",
-        inline: false,
-      },
-      {
-        name: "Economy",
-        value: "• Wages are paid automatically over time\n• Market prices & demand fluctuate\n• Reputation affects how much customers spend",
-        inline: false,
-      }
-    )
-    .setFooter({ text: "Tip: Keep enough supply and balance to survive bad markets!" });
-
-  return embed;
-}
-
-// =============== SHARED LOGIC ===============
-async function cmdStart(user, respond) {
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-  const embed = buildStatusEmbed(user, res);
-  embed.setDescription("Welcome to Fast Food Tycoon!");
-  await respond({ embeds: [embed] });
-}
-
-async function cmdStatus(user, respond) {
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-  const embed = buildStatusEmbed(user, res);
-  await respond({ embeds: [embed] });
-}
-
-async function cmdBuySupply(user, amount, respond) {
-  if (amount <= 0) {
-    await respond({ content: "Amount must be positive." });
-    return;
-  }
-
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-
-  const basePrice = 5;
-  const mm = marketMultiplier();
-  const costPer = Math.floor(basePrice * mm);
-  const totalCost = costPer * amount;
-
-  if (res.balance < totalCost) {
-    await respond({ content: `Not enough balance. Need $${totalCost}.` });
-    return;
-  }
-
-  res.balance -= totalCost;
-  res.supply += amount;
-
-  const embed = new EmbedBuilder()
-    .setTitle("📦 Supply Purchased")
-    .setDescription(`You bought ${amount} units of supply.`)
-    .setColor(0x00AA00)
-    .addFields(
-      { name: "Price per unit", value: `$${costPer}`, inline: true },
-      { name: "Total cost", value: `$${totalCost}`, inline: true },
-      { name: "New balance", value: `$${res.balance}`, inline: true },
-      { name: "Total supply", value: String(res.supply), inline: true }
-    );
-
-  await respond({ embeds: [embed] });
-}
-
-async function cmdUpgrade(user, respond) {
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-
-  const cost = 300 * res.level;
-  if (res.balance < cost) {
-    await respond({ content: `You need $${cost} to upgrade (current balance: $${res.balance}).` });
-    return;
-  }
-
-  res.balance -= cost;
-  res.level += 1;
-  res.base_demand += 5;
-
-  const embed = new EmbedBuilder()
-    .setTitle("🏗️ Restaurant Upgraded!")
-    .setDescription(`Your restaurant is now Level ${res.level}.`)
-    .setColor(0x0000FF)
-    .addFields(
-      { name: "New base demand", value: String(res.base_demand), inline: true },
-      { name: "Remaining balance", value: `$${res.balance}`, inline: true }
-    );
-
-  await respond({ embeds: [embed] });
-}
-
-async function cmdHireStaff(user, role, respond) {
-  role = role.toLowerCase();
-  if (!["cashier", "cook", "manager"].includes(role)) {
-    await respond({ content: "Role must be `cashier`, `cook` or `manager`." });
-    return;
-  }
-
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-
-  let speed, quality, wage;
-
-  if (role === "cashier") {
-    speed = Math.floor(Math.random() * 5) + 6;
-    quality = Math.floor(Math.random() * 5) + 4;
-    wage = Math.floor(Math.random() * 11) + 10;
-  } else if (role === "cook") {
-    speed = Math.floor(Math.random() * 5) + 4;
-    quality = Math.floor(Math.random() * 4) + 7;
-    wage = Math.floor(Math.random() * 11) + 15;
-  } else { // manager
-    speed = Math.floor(Math.random() * 5) + 5;
-    quality = Math.floor(Math.random() * 5) + 5;
-    wage = Math.floor(Math.random() * 16) + 20;
-  }
-
-  const costToHire = wage * 10;
-  if (res.balance < costToHire) {
-    await respond({ content: `Not enough balance. Need $${costToHire} to hire.` });
-    return;
-  }
-
-  res.balance -= costToHire;
-  const staffNames = ["Chris", "Drew", "Parker", "Skyler", "Quinn", "Avery", "Harper", "Reese"];
-  const name = staffNames[Math.floor(Math.random() * staffNames.length)];
-
-  const newStaff = new Staff(name, role, speed, quality, wage);
-  res.staff.push(newStaff);
-
-  const embed = new EmbedBuilder()
-    .setTitle("👔 Staff Hired")
-    .setDescription(`You hired ${name} as a ${role}.`)
-    .setColor(0xAA00AA)
-    .addFields(
-      { name: "Speed", value: String(speed), inline: true },
-      { name: "Quality", value: String(quality), inline: true },
-      { name: "Wage / tick", value: `$${wage}`, inline: true },
-      { name: "Hire cost", value: `$${costToHire}`, inline: true },
-      { name: "New balance", value: `$${res.balance}`, inline: true }
-    );
-
-  await respond({ embeds: [embed] });
-}
-
-async function cmdCustomers(user, respond) {
-  const res = getRestaurant(user.id);
-  simulateTick(res);
-
-  const customers = Array.from({ length: 5 }, () => generateCustomer(res));
-  const orders = ["Burger Meal", "Fries & Shake", "Family Bucket", "Veggie Combo", "Deluxe Box"];
-  const moods = ["looks happy", "seems annoyed", "is very hungry", "is just browsing", "is already complaining"];
-
-  let desc = "";
-  for (const c of customers) {
-    const order = orders[Math.floor(Math.random() * orders.length)];
-    const mood = moods[Math.floor(Math.random() * moods.length)];
-    desc += `${c.name} – Personality: ${c.personality}, ${mood}\n`;
-    desc += `Hunger: ${c.hunger}/100 • Patience: ${c.patience}s\n`;
-    desc += `Order: ${order} • Spend: $${c.spend_min}-$${c.spend_max} • Tip chance: ${c.tip_chance}%\n\n`;
-  }
-
-  const embed = new EmbedBuilder()
-    .setTitle("👥 Incoming Customers")
-    .setDescription(desc)
-    .setColor(0x008080);
-
-  await respond({ embeds: [embed] });
-}
-
-// =============== EVENTS ===============
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-
-  // Register slash commands
-  const commands = [
-    new SlashCommandBuilder()
-      .setName("help")
-      .setDescription("Show Fast Food Tycoon help."),
-    new SlashCommandBuilder()
-      .setName("start")
-      .setDescription("Start or view your fast food empire."),
-    new SlashCommandBuilder()
-      .setName("status")
-      .setDescription("View your empire status."),
-    new SlashCommandBuilder()
-      .setName("buy_supply")
-      .setDescription("Buy food supplies.")
-      .addIntegerOption(option => option.setName("amount").setDescription("Units of supply to buy.").setRequired(true)),
-    new SlashCommandBuilder()
-      .setName("upgrade")
-      .setDescription("Upgrade your restaurant."),
-    new SlashCommandBuilder()
-      .setName("hire_staff")
-      .setDescription("Hire staff (cashier, cook, manager).")
-      .addStringOption(option => option.setName("role").setDescription("cashier, cook, or manager").setRequired(true)),
-    new SlashCommandBuilder()
-      .setName("customers")
-      .setDescription("Preview NPC customers."),
-  ];
-
-  const rest = new REST({ version: "10" }).setToken(token);
-  try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log("✅ Slash commands registered");
-  } catch (error) {
-    console.error("❌ Error registering commands:", error);
-  }
-});
-
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const { commandName } = interaction;
-
-  const respond = (options) => interaction.reply(options);
-
-  try {
-    if (commandName === "help") {
-      const embed = buildHelpEmbed("?");
-      await respond({ embeds: [embed], ephemeral: true });
-    } else if (commandName === "start") {
-      await cmdStart(interaction.user, respond);
-    } else if (commandName === "status") {
-      await cmdStatus(interaction.user, respond);
-    } else if (commandName === "buy_supply") {
-      const amount = interaction.options.getInteger("amount");
-      await cmdBuySupply(interaction.user, amount, respond);
-    } else if (commandName === "upgrade") {
-      await cmdUpgrade(interaction.user, respond);
-    } else if (commandName === "hire_staff") {
-      const role = interaction.options.getString("role");
-      await cmdHireStaff(interaction.user, role, respond);
-    } else if (commandName === "customers") {
-      await cmdCustomers(interaction.user, respond);
-    }
-  } catch (error) {
-    console.error("Error handling command:", error);
-    await respond({ content: "❌ An error occurred!", ephemeral: true });
-  }
-});
-
-client.on("messageCreate", async (message) => {
-  if (!message.content.startsWith("?") || message.author.bot) return;
-
-  const args = message.content.slice(1).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
-
-  const respond = (options) => message.reply(options);
-
-  try {
-    if (command === "help") {
-      const embed = buildHelpEmbed("?");
-      await respond({ embeds: [embed] });
-    } else if (command === "start") {
-      await cmdStart(message.author, respond);
-    } else if (command === "status") {
-      await cmdStatus(message.author, respond);
-    } else if (command === "buy_supply") {
-      const amount = parseInt(args[0]);
-      if (isNaN(amount)) {
-        await respond({ content: "Please provide a valid number." });
-        return;
-      }
-      await cmdBuySupply(message.author, amount, respond);
-    } else if (command === "upgrade") {
-      await cmdUpgrade(message.author, respond);
-    } else if (command === "hire_staff") {
-      const role = args[0];
-      if (!role) {
-        await respond({ content: "Please specify a role: cashier, cook, or manager." });
-        return;
-      }
-      await cmdHireStaff(message.author, role, respond);
-    } else if (command === "customers") {
-      await cmdCustomers(message.author, respond);
-    }
-  } catch (error) {
-    console.error("Error handling prefix command:", error);
-    await respond({ content: "❌ An error occurred!" });
-  }
-});
-
-client.login(token);
+      { name: "💼 Role", value: employee.role.toUpperCase(), inline: true },
+      { name: "📊 Level", value: String(employee.level), inline: true },
+      { name: "💰 Salary", value: `$${employee.salary}/period`, inline: true },
+      { name: "⚡ Speed", value: String(employee.speed), inline: true },
+      { name: "✨ Quality", value: String(employee.quality), inline: true },
+      { name: "😊 Customer Satisfaction", value: String(employee.customer_satisfaction), inline: true },
+      { name: "📈 Performance", value: `${performanceBar} ${(employee.performance * 100).toFixed(0)}%`, inline: false },
+      { name: "😄 Morale", value: 
