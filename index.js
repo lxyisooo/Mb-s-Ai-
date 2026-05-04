@@ -443,5 +443,6 @@ client.on("messageCreate", async (message) => {
 });
 
 client.login(token);
-const token = process.env.DISCORD_TOKEN;
+const discordToken = process.env.DISCORD_TOKEN;
+// Update all references to use discordToken instead of token
 const botToken = process.env.DISCORD_TOKEN;  // Different name
