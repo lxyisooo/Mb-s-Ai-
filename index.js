@@ -1,5 +1,15 @@
+require('dotenv').config();
+
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { token } = require('./config.json');
+
+const token = process.env.DISCORD_TOKEN;
+
+// Validate token exists
+if (!token) {
+  console.error('❌ DISCORD_TOKEN not found in environment variables');
+  console.error('Please create a .env file with: DISCORD_TOKEN=your_token_here');
+  process.exit(1);
+}
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages] });
 
@@ -331,7 +341,7 @@ async function cmdCustomers(user, respond) {
 
 // =============== EVENTS ===============
 client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 
   // Register slash commands
   const commands = [
@@ -443,6 +453,3 @@ client.on("messageCreate", async (message) => {
 });
 
 client.login(token);
-const discordToken = process.env.DISCORD_TOKEN;
-// Update all references to use discordToken instead of token
-const botToken = process.env.DISCORD_TOKEN;  // Different name
