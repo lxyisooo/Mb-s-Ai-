@@ -1,253 +1,160 @@
-client.once("ready",async()=>{
-const rest=new REST({version:"10"}).setToken(process.env.DISCORD_TOKEN);
-await rest.put(Routes.applicationCommands(client.user.id),{body:[
-new SlashCommandBuilder().setName("start").setDescription("Start your empire"),
-new SlashCommandBuilder().setName("status").setDescription("View business"),
-new SlashCommandBuilder().setName("locations").setDescription("Manage locations"),
-new SlashCommandBuilder().setName("leaderboard").setDescription("Rankings")
-]});
-console.log("BOT READY");
+const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, REST, Routes } = require("discord.js");
+require("dotenv").config();
+
+const PREFIX = "?";
+const token = process.env.DISCORD_TOKEN;
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-client.on("interactionCreate",async i=>{
-if(i.isChatInputCommand()){
-const b=getBiz(i.user.id);
+/* ===================== DATA ===================== */
 
-if(i.commandName==="start"){
-if(b.setup)return i.reply({embeds:[bizEmbed(b)]});
-const select=new StringSelectMenuBuilder()
-.setCustomId("select_brand")
-.setPlaceholder("Choose brand")
-.addOptions(Object.entries(BRANDS).map(([k,v])=>({
-label:v.name,value:k,emoji:v.emoji})));
-return i.reply({embeds:[
-new EmbedBuilder().setTitle("🍔 Fast Food Tycoon")
-.setDescription("Pick your starting brand")],
-components:[new ActionRowBuilder().addComponents(select)]});
+const businesses = {};
+
+const getBiz = id => businesses[id] ||= {
+  money: 1000,
+  level: 1,
+  locations: 0,
+  employees: 0,
+  lastWork: 0
+};
+
+/* ===================== EMBEDS ===================== */
+
+const helpEmbed = () =>
+  new EmbedBuilder()
+    .setTitle("🍔 Fast Food Tycoon — Help")
+    .setDescription("Prefix **?** and **slash commands** both work!")
+    .addFields(
+      { name: "?start /start", value: "Create your business" },
+      { name: "?status /status", value: "View your business stats" },
+      { name: "?work /work", value: "Earn money (cooldown)" },
+      { name: "?open /open", value: "Open a new location" },
+      { name: "?hire /hire", value: "Hire an employee" },
+      { name: "?leaderboard /leaderboard", value: "Top businesses" }
+    )
+    .setColor(0xffc72c);
+
+const statusEmbed = (u, b) =>
+  new EmbedBuilder()
+    .setTitle(`🏪 ${u.username}'s Business`)
+    .addFields(
+      { name: "💰 Money", value: `$${b.money}`, inline: true },
+      { name: "⭐ Level", value: String(b.level), inline: true },
+      { name: "📍 Locations", value: String(b.locations), inline: true },
+      { name: "👥 Employees", value: String(b.employees), inline: true }
+    )
+    .setColor(0x00ff99);
+
+/* ===================== GAME LOGIC ===================== */
+
+function cmdStart(user) {
+  const b = getBiz(user.id);
+  return `✅ Business created! You start with **$${b.money}**.`;
 }
 
-if(i.commandName==="status")
-return i.reply({embeds:[bizEmbed(b)]});
+function cmdWork(user) {
+  const b = getBiz(user.id);
+  const now = Date.now();
+  if (now - b.lastWork < 60000)
+    return "⏳ You must wait 1 minute before working again.";
 
-if(i.commandName==="locations"){
-b.locs.forEach(l=>l.tick());
-const embeds=b.locs.map(l=>new EmbedBuilder()
-.setTitle(`${l.brand.emoji} ${l.name}`)
-.setColor(l.brand.color)
-.addFields(
-{name:"💰 Balance",value:`$${l.balance}`,inline:true},
-{name:"📊 Revenue",value:`$${l.revenue}`,inline:true},
-{name:"⭐ Reputation",value:`${bar(l.reputation,100)} ${l.reputation}`,inline:true},
-{name:"😊 Satisfaction",value:`${l.sat}%`,inline:true},
-{name:"👥 Customers",value:String(l.customers),inline:true},
-{name:"Staff",value:l.employees.map(e=>`${e.name} (${e.role})`).join("\n")||"None"}
-));
-const select=new StringSelectMenuBuilder()
-.setCustomId("select_location")
-.setPlaceholder("Select location")
-.addOptions(b.locs.map(l=>({label:l.name,value:l.id,description:l.city})));
-return i.reply({embeds,components:[new ActionRowBuilder().addComponents(select)]});
+  const earned = 100 + b.employees * 25;
+  b.money += earned;
+  b.lastWork = now;
+  return `💼 You worked and earned **$${earned}**.`;
 }
 
-if(i.commandName==="leaderboard"){
-const lb=Object.values(businesses)
-.sort((a,b)=>b.prestige-a.prestige||b.total()-a.total()).slice(0,10);
-return i.reply({embeds:[
-new EmbedBuilder().setTitle("🏆 Leaderboard")
-.setDescription(lb.map((x,i)=>`${i+1}. **${x.name}** | Prestige ${x.prestige}`).join("\n"))
-]});
-}
-}
+function cmdOpen(user) {
+  const b = getBiz(user.id);
+  const cost = 500 * (b.locations + 1);
+  if (b.money < cost)
+    return `❌ You need $${cost} to open a new location.`;
 
-if(i.isStringSelectMenu()){
-const b=getBiz(i.user.id);
-
-if(i.customId==="select_brand"){
-const k=i.values[0],v=BRANDS[k];
-const loc=new Location(v.name,CITIES[Math.random()*CITIES.length|0],k);
-b.name=v.name;b.locs.push(loc);b.setup=true;
-return i.reply({embeds:[
-new EmbedBuilder().setTitle(`✅ Welcome to ${v.name}`)
-.setColor(v.color).setDescription(v.desc)
-]});
+  b.money -= cost;
+  b.locations++;
+  b.level++;
+  return `🏪 New location opened! Level up to **${b.level}**.`;
 }
 
-if(i.customId==="select_location"){
-const loc=b.locs.find(l=>l.id===i.values[0]);
-if(!loc)return;
-const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`hire_${loc.id}`).setLabel("👔 Hire").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId(`sup_${loc.id}`).setLabel("📦 Supplies").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId(`up_${loc.id}`).setLabel("🏗️ Upgrade").setStyle(ButtonStyle.Secondary)
-);
-return i.reply({embeds:[new EmbedBuilder()
-.setTitle(`${loc.brand.emoji} ${loc.name}`)
-.addFields({name:"💰 Balance",value:`$${loc.balance}`})],
-components:[row],ephemeral:true});
-}
+function cmdHire(user) {
+  const b = getBiz(user.id);
+  if (b.money < 300) return "❌ Hiring costs $300.";
+
+  b.money -= 300;
+  b.employees++;
+  return "👔 Employee hired!";
 }
 
-if(i.isButton()){
-const b=getBiz(i.user.id);
-const [act,id]=i.customId.split("_");
-const loc=b.locs.find(l=>l.id===id);if(!loc)return;
+/* ===================== PREFIX HANDLER ===================== */
 
-if(act==="hire"){
-const e=new Employee(empName(),"cashier");
-const cost=e.salary*15;if(loc.balance<cost)
-return i.reply({content:"❌ Not enough money",ephemeral:true});
-loc.balance-=cost;loc.employees.push(e);
-return i.reply({content:`✅ Hired ${e.name}`,ephemeral:true});
-}
+client.on("messageCreate", async msg => {
+  if (!msg.content.startsWith(PREFIX) || msg.author.bot) return;
 
-if(act==="sup"){
-if(loc.balance<800)return i.reply({content:"❌ Need $800",ephemeral:true});
-loc.balance-=800;return i.reply({content:"📦 Supplies ordered",ephemeral:true});
-}
+  const cmd = msg.content.slice(1).toLowerCase();
+  const b = getBiz(msg.author.id);
 
-if(act==="up"){
-const cost=2000*loc.level;
-if(loc.balance<cost)return i.reply({content:"❌ Not enough money",ephemeral:true});
-loc.balance-=cost;loc.level++;b.prestige+=15;
-return i.reply({content:`🏗️ Upgraded to level ${loc.level}`,ephemeral:true});
-}
-}
-});
+  if (cmd === "help") return msg.reply({ embeds: [helpEmbed()] });
+  if (cmd === "start") return msg.reply(cmdStart(msg.author));
+  if (cmd === "status") return msg.reply({ embeds: [statusEmbed(msg.author, b)] });
+  if (cmd === "work") return msg.reply(cmdWork(msg.author));
+  if (cmd === "open") return msg.reply(cmdOpen(msg.author));
+  if (cmd === "hire") return msg.reply(cmdHire(msg.author));
 
-client.login(process.env.DISCORD_TOKEN);
-const buildBizEmbed=b=>new EmbedBuilder()
-.setTitle(`${b.locations[0]?.brand.emoji||"🏪"} ${b.business_name}`)
-.setColor(b.locations[0]?.brand.color||0xFF6B35)
-.addFields(
-{name:"💰 Balance",value:`$${b.getTotalBalance().toLocaleString()}`,inline:true},
-{name:"📈 Revenue",value:`$${b.getTotalRevenue().toLocaleString()}`,inline:true},
-{name:"🏆 Prestige",value:String(b.prestige),inline:true},
-{name:"🏪 Locations",value:String(b.locations.length),inline:true},
-{name:"👥 Employees",value:String(b.getTotalEmployees()),inline:true},
-{name:"📍 Stores",value:b.locations.map(l=>`**${l.name}** (${l.city})`).join("\n")||"None"}
-);
+  if (cmd === "leaderboard") {
+    const lb = Object.entries(businesses)
+      .sort((a, b) => b[1].money - a[1].money)
+      .slice(0, 5)
+      .map(([id, x], i) => `${i + 1}. <@${id}> — $${x.money}`)
+      .join("\n");
 
-client.once("ready",async()=>{
-  const rest=new REST({version:"10"}).setToken(token);
-  await rest.put(Routes.applicationCommands(client.user.id),{body:[
-    new SlashCommandBuilder().setName("start").setDescription("Start your empire"),
-    new SlashCommandBuilder().setName("status").setDescription("View business"),
-    new SlashCommandBuilder().setName("locations").setDescription("Manage locations"),
-    new SlashCommandBuilder().setName("leaderboard").setDescription("Global rankings")
-  ]});
-  console.log("✅ BOT READY");
-});
-
-client.on("interactionCreate",async i=>{
-  if(i.isChatInputCommand()){
-    const b=getBiz(i.user.id);
-
-    if(i.commandName==="start"){
-      if(b.setup_complete)return i.reply({embeds:[buildBizEmbed(b)]});
-      const select=new StringSelectMenuBuilder()
-      .setCustomId("select_brand")
-      .setPlaceholder("Choose brand")
-      .addOptions(Object.entries(BRANDS).map(([k,v])=>({
-        label:v.name,value:k,emoji:v.emoji
-      })));
-      return i.reply({
-        embeds:[new EmbedBuilder().setTitle("🍔 Fast Food Tycoon")
-        .setDescription("Pick your starting brand")],
-        components:[new ActionRowBuilder().addComponents(select)]
-      });
-    }
-
-    if(i.commandName==="status")
-      return i.reply({embeds:[buildBizEmbed(b)]});
-
-    if(i.commandName==="locations"){
-      b.locations.forEach(l=>l.tick());
-      const embeds=b.locations.map(l=>new EmbedBuilder()
-        .setTitle(`${l.brand.emoji} ${l.name}`)
-        .setColor(l.brand.color)
-        .addFields(
-          {name:"💰 Balance",value:`$${l.balance}`,inline:true},
-          {name:"📊 Revenue",value:`$${l.revenue_today}`,inline:true},
-          {name:"⭐ Reputation",value:`${bar(l.reputation,100)} ${l.reputation}`,inline:true},
-          {name:"😊 Satisfaction",value:`${l.avg_satisfaction}%`,inline:true},
-          {name:"👥 Customers",value:String(l.customer_count),inline:true},
-          {name:"Staff",value:l.employees.map(e=>`${e.name} (${e.role})`).join("\n")||"None"}
-        )
-      );
-      const select=new StringSelectMenuBuilder()
-      .setCustomId("select_location")
-      .setPlaceholder("Select location")
-      .addOptions(b.locations.map(l=>({
-        label:l.name,value:l.id,description:l.city
-      })));
-      return i.reply({embeds,components:[new ActionRowBuilder().addComponents(select)]});
-    }
-
-    if(i.commandName==="leaderboard"){
-      const lb=Object.values(businesses)
-      .sort((a,b)=>b.prestige-a.prestige||b.getTotalBalance()-a.getTotalBalance())
-      .slice(0,10);
-      return i.reply({embeds:[
-        new EmbedBuilder().setTitle("🏆 Leaderboard")
-        .setDescription(lb.map((x,i)=>`${i+1}. **${x.business_name}** | Prestige ${x.prestige}`).join("\n"))
-      ]});
-    }
-        }
-    if(i.isStringSelectMenu()){
-    const b=getBiz(i.user.id);
-
-    if(i.customId==="select_brand"){
-      const k=i.values[0],v=BRANDS[k];
-      const loc=new Location(v.name,CITIES[Math.random()*CITIES.length|0],k);
-      b.business_name=v.name;b.locations.push(loc);b.setup_complete=true;
-      return i.reply({embeds:[
-        new EmbedBuilder().setTitle(`✅ Welcome to ${v.name}`)
-        .setColor(v.color).setDescription(v.description)
-      ]});
-    }
-
-    if(i.customId==="select_location"){
-      const loc=b.locations.find(l=>l.id===i.values[0]); if(!loc)return;
-      const row=new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`hire_${loc.id}`).setLabel("👔 Hire").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`sup_${loc.id}`).setLabel("📦 Supplies").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`up_${loc.id}`).setLabel("🏗️ Upgrade").setStyle(ButtonStyle.Secondary)
-      );
-      return i.reply({embeds:[
-        new EmbedBuilder().setTitle(`${loc.brand.emoji} ${loc.name}`)
-        .addFields({name:"💰 Balance",value:`$${loc.balance}`})
-      ],components:[row],ephemeral:true});
-    }
+    return msg.reply(`🏆 **Leaderboard**\n${lb || "No data yet."}`);
   }
+});
 
-  if(i.isButton()){
-    const b=getBiz(i.user.id);
-    const [act,id]=i.customId.split("_");
-    const loc=b.locations.find(l=>l.id===id); if(!loc)return;
+/* ===================== SLASH COMMANDS ===================== */
 
-    if(act==="hire"){
-      const e=new Employee(empName(),"cashier");
-      const cost=e.salary*15;
-      if(loc.balance<cost)
-        return i.reply({content:"❌ Not enough money",ephemeral:true});
-      loc.balance-=cost;loc.employees.push(e);
-      return i.reply({content:`✅ Hired ${e.name}`,ephemeral:true});
-    }
+client.once("ready", async () => {
+  const rest = new REST({ version: "10" }).setToken(token);
+  await rest.put(Routes.applicationCommands(client.user.id), {
+    body: [
+      new SlashCommandBuilder().setName("help").setDescription("Show help"),
+      new SlashCommandBuilder().setName("start").setDescription("Start your business"),
+      new SlashCommandBuilder().setName("status").setDescription("View business"),
+      new SlashCommandBuilder().setName("work").setDescription("Work for money"),
+      new SlashCommandBuilder().setName("open").setDescription("Open a new location"),
+      new SlashCommandBuilder().setName("hire").setDescription("Hire employee"),
+      new SlashCommandBuilder().setName("leaderboard").setDescription("View leaderboard")
+    ]
+  });
+  console.log("✅ Bot online");
+});
 
-    if(act==="sup"){
-      if(loc.balance<800)
-        return i.reply({content:"❌ Need $800",ephemeral:true});
-      loc.balance-=800;
-      return i.reply({content:"📦 Supplies ordered",ephemeral:true});
-    }
+client.on("interactionCreate", async i => {
+  if (!i.isChatInputCommand()) return;
 
-    if(act==="up"){
-      const cost=2000*loc.level;
-      if(loc.balance<cost)
-        return i.reply({content:"❌ Not enough money",ephemeral:true});
-      loc.balance-=cost;loc.level++;b.prestige+=15;
-      return i.reply({content:`🏗️ Upgraded to level ${loc.level}`,ephemeral:true});
-    }
+  const b = getBiz(i.user.id);
+
+  if (i.commandName === "help") return i.reply({ embeds: [helpEmbed()] });
+  if (i.commandName === "start") return i.reply(cmdStart(i.user));
+  if (i.commandName === "status") return i.reply({ embeds: [statusEmbed(i.user, b)] });
+  if (i.commandName === "work") return i.reply(cmdWork(i.user));
+  if (i.commandName === "open") return i.reply(cmdOpen(i.user));
+  if (i.commandName === "hire") return i.reply(cmdHire(i.user));
+
+  if (i.commandName === "leaderboard") {
+    const lb = Object.entries(businesses)
+      .sort((a, b) => b[1].money - a[1].money)
+      .slice(0, 5)
+      .map(([id, x], i) => `${i + 1}. <@${id}> — $${x.money}`)
+      .join("\n");
+
+    return i.reply(`🏆 **Leaderboard**\n${lb || "No data yet."}`);
   }
 });
 
