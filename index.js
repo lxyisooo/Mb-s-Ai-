@@ -444,3 +444,4 @@ client.on("messageCreate", async (message) => {
 
 client.login(token);
 const token = process.env.DISCORD_TOKEN;
+const botToken = process.env.DISCORD_TOKEN;  // Different name
