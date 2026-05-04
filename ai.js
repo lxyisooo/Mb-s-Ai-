@@ -6,7 +6,7 @@ const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /* ================= STATE ================= */
 
-const channelMemory = new Map(); // last messages per channel
+const channelMemory = new Map();
 const cooldowns = new Map();
 
 module.exports = (client) => {
@@ -22,10 +22,10 @@ module.exports = (client) => {
 
     const shouldRespond = evaluateMessage(msg);
 
-    if (!shouldRespond) {
-      maybeReact(msg);
-      return;
-    }
+    // 👀 passive reactions always allowed
+    maybeReact(msg);
+
+    if (!shouldRespond) return;
 
     if (onCooldown(msg.channel.id)) return;
 
@@ -37,9 +37,9 @@ module.exports = (client) => {
 
     await msg.channel.sendTyping();
 
-    const reply = await generateAI(prompt, msg);
-
     const thinking = await msg.reply("…");
+
+    const reply = await generateAI(prompt, msg);
 
     setTimeout(async () => {
       await thinking.edit(reply);
@@ -62,7 +62,7 @@ module.exports = (client) => {
 
 };
 
-/* ================= DECISION ENGINE ================= */
+/* ================= DECISION ENGINE (FIXED) ================= */
 
 function evaluateMessage(msg) {
   const text = msg.content.toLowerCase();
@@ -70,17 +70,23 @@ function evaluateMessage(msg) {
   const mentioned = msg.mentions.has(msg.client.user);
   const repliedToBot = msg.reference?.messageId;
 
-  const questions = /\?$/.test(text);
-  const conversational = text.length > 30;
+  const isQuestion = text.includes("?");
+  const isChatty = text.length > 25;
 
   const chance = Math.random();
 
-  // priority triggers
+  // 🎯 always respond to direct interaction
   if (mentioned || repliedToBot) return true;
-  if (questions && chance < 0.6) return true;
 
-  // low probability "lurking participation"
-  if (conversational && chance < 0.04) return true;
+  if (isQuestion && chance < 0.55) return true;
+
+  /* 🔥 FIX: add activity-based presence scaling */
+  const activityBoost = Math.min(0.25, (msg.channel.lastMessageCount || 10) / 80);
+
+  if (isChatty && chance < (0.03 + activityBoost)) return true;
+
+  // 💬 rare "opinion flicker"
+  if (chance < (0.008 + activityBoost)) return true;
 
   return false;
 }
@@ -99,13 +105,18 @@ function trackContext(msg) {
     content: msg.content
   });
 
-  if (mem.length > 12) mem.shift();
+  if (mem.length > 15) mem.shift(); // slightly more memory = better flow
 }
 
 /* ================= AI CORE ================= */
 
 async function generateAI(prompt, msg) {
-  const username = msg.user?.username || msg.author?.username || "user";
+
+  const username =
+    msg.author?.username ||
+    msg.user?.username ||
+    "user";
+
   const context = getContext(msg.channel.id);
 
   try {
@@ -117,25 +128,23 @@ async function generateAI(prompt, msg) {
           content: `
 You are a Discord server AI personality.
 
-CORE BEHAVIOR:
+CORE:
 - You are NOT human
-- You are a conversational server AI
-- You behave like a real Discord user in tone and timing
-- You are observant, humorous, and context-aware
-- You do not over-explain
-- You do not respond to everything
+- You behave like a real Discord member
+- You are observant, funny, slightly sarcastic
+- You do not reply to everything
+- You prefer short, natural responses
 
-SOCIAL BEHAVIOR:
-- You prefer reacting over replying
-- You join conversations only when relevant
-- You occasionally make short comments naturally
-- You adapt to ongoing conversation context
+BEHAVIOR:
+- mostly react energy
+- sometimes comment naturally
+- joins conversations only when relevant
+- adapts to chat context
 
 TONE:
-- casual Discord chat energy
+- casual Discord vibe
 - light humor
-- subtle sarcasm
-- natural Gen Z tone (not forced slang)
+- natural flow, not scripted slang spam
 
 CONTEXT:
 ${context}
@@ -146,12 +155,13 @@ ${context}
           content: `${username}: ${prompt}`
         }
       ],
-      temperature: 1.05
+      temperature: 1.1
     });
 
     return polish(res.choices[0].message.content);
 
   } catch (e) {
+    console.error(e);
     return "brain lagged 💀";
   }
 }
@@ -163,27 +173,43 @@ function getContext(channelId) {
   return mem.map(m => `${m.user}: ${m.content}`).join("\n");
 }
 
-/* ================= HUMAN BEHAVIOR SIM ================= */
+/* ================= FIX: MISSING FUNCTION ================= */
+
+function extractPrompt(msg) {
+  const PREFIX = "?ai";
+
+  if (msg.content.startsWith(PREFIX)) {
+    return msg.content.slice(PREFIX.length).trim();
+  }
+
+  if (msg.mentions.has(msg.client.user)) {
+    return msg.content.replace(`<@${msg.client.user.id}>`, "").trim();
+  }
+
+  return msg.content;
+}
+
+/* ================= HUMAN BEHAVIOR ================= */
 
 function onCooldown(channelId) {
   const last = cooldowns.get(channelId) || 0;
-  return Date.now() - last < 5000;
+  return Date.now() - last < 4500;
 }
 
 function humanDelay() {
-  return 600 + Math.random() * 1800;
+  return 500 + Math.random() * 1400;
 }
 
 async function naturalDelay() {
-  await new Promise(r => setTimeout(r, 200 + Math.random() * 800));
+  await new Promise(r => setTimeout(r, 150 + Math.random() * 600));
 }
 
 /* ================= REACTIONS ================= */
 
 function maybeReact(msg) {
-  const reacts = ["😂", "💀", "🔥", "👍", "😭","🤤","👀"];
+  const reacts = ["😂", "💀", "🔥", "👍", "😭", "🤨"];
 
-  if (Math.random() < 0.18) {
+  if (Math.random() < 0.22) {
     msg.react(reacts[Math.floor(Math.random() * reacts.length)])
       .catch(() => {});
   }
@@ -194,7 +220,7 @@ function maybeReact(msg) {
 function polish(text) {
   const endings = ["", " fr", " ngl", " 💀", " 😭"];
 
-  if (Math.random() < 0.25) {
+  if (Math.random() < 0.3) {
     text += endings[Math.floor(Math.random() * endings.length)];
   }
 
