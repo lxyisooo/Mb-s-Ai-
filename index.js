@@ -3,9 +3,13 @@ const mongoose = require('mongoose');
 const express = require('express');
 require('dotenv').config();
 
+// --- Express must bind immediately so Render doesn't time out ---
 const app = express();
 app.get('/', (req, res) => res.send('Bot is online!'));
-app.listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Express listening on port ${PORT}`);
+});
 
 const User = mongoose.model('AdoptMeUser', new mongoose.Schema({
     userId: String,
@@ -17,7 +21,6 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// --- UPDATED PREFIX ---
 const PREFIX = "m?";
 
 const DATA = {
@@ -29,9 +32,20 @@ const DATA = {
     ]
 };
 
-client.once('ready', async () => {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log(`Logged in as ${client.user.tag}! Prefix is ${PREFIX}`);
+// --- Connect to MongoDB before logging in ---
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+        console.log('✅ MongoDB connected');
+        return client.login(process.env.TOKEN);
+    })
+    .catch(err => {
+        console.error('❌ Startup error:', err);
+        process.exit(1);
+    });
+
+// --- Fixed: 'clientReady' replaces deprecated 'ready' event ---
+client.once('clientReady', () => {
+    console.log(`✅ Bot online as ${client.user.tag}! Prefix: ${PREFIX}`);
 });
 
 client.on('messageCreate', async (msg) => {
@@ -41,7 +55,6 @@ client.on('messageCreate', async (msg) => {
     const cmd = args.shift().toLowerCase();
     let u = await User.findOne({ userId: msg.author.id }) || await User.create({ userId: msg.author.id });
 
-    // --- HELP COMMAND ---
     if (cmd === 'help') {
         const helpEmbed = new EmbedBuilder()
             .setTitle("🐾 Adopt Me Simulator Help")
@@ -54,11 +67,9 @@ client.on('messageCreate', async (msg) => {
                 { name: '💰 Economy', value: `Your Balance: **$${u.bucks}**` }
             )
             .setFooter({ text: "Try to hatch a LEGENDARY Shadow Dragon! 💀" });
-
         return msg.reply({ embeds: [helpEmbed] });
     }
 
-    // --- HATCH COMMAND ---
     if (cmd === 'hatch') {
         if (u.bucks < 250) return msg.reply("❌ Too broke! You need $250. Go `m?work`.");
         u.bucks -= 250;
@@ -66,7 +77,6 @@ client.on('messageCreate', async (msg) => {
 
         const hatchMsg = await msg.channel.send("🥚 **Buying Egg...**");
         const frames = ["🥚 *Egg is wobbling...*", "🥚 *Crack appearing...*", "💥 **BOOM!**"];
-        
         for (const frame of frames) {
             await new Promise(r => setTimeout(r, 1200));
             await hatchMsg.edit(frame);
@@ -84,15 +94,13 @@ client.on('messageCreate', async (msg) => {
         u.inventory.push({ name: pet.n, rarity: rarity.n, emoji: pet.e });
         await u.save();
 
-        const res = new EmbedBuilder()
+        const result = new EmbedBuilder()
             .setTitle(`${rarity.n.toUpperCase()} HATCH!`)
             .setDescription(`You just got: ${pet.e} **${pet.n}**`)
             .setColor(rarity.c);
-        
-        await hatchMsg.edit({ content: "✨ **Hatched!**", embeds: [res] });
+        await hatchMsg.edit({ content: "✨ **Hatched!**", embeds: [result] });
     }
 
-    // --- WORK COMMAND ---
     if (cmd === 'work') {
         const amt = Math.floor(Math.random() * 80) + 40;
         u.bucks += amt;
@@ -100,33 +108,25 @@ client.on('messageCreate', async (msg) => {
         msg.reply(`💰 You worked as a Pet Groomer and earned **$${amt}**!`);
     }
 
-    // --- INVENTORY COMMAND ---
     if (cmd === 'inv' || cmd === 'inventory') {
         if (u.inventory.length === 0) return msg.reply("You have no pets. Go hatch some!");
-        
         const list = u.inventory.map((p, i) => `\`${i+1}\` ${p.emoji} **${p.name}** [${p.rarity}]`).join('\n');
         const invEmbed = new EmbedBuilder()
             .setTitle(`🎒 ${msg.author.username}'s Pets`)
             .setDescription(list.substring(0, 4000))
             .setColor('#3498db')
             .setFooter({ text: `Balance: $${u.bucks}` });
-
         msg.reply({ embeds: [invEmbed] });
     }
 
-    // --- NEON COMMAND ---
     if (cmd === 'make-neon') {
         const petName = args.join(" ").toLowerCase();
         const dups = u.inventory.filter(p => p.name.toLowerCase() === petName);
-
         if (dups.length < 4) return msg.reply(`❌ You need 4 of the same pet! You only have ${dups.length} ${petName}s.`);
 
         let count = 0;
         u.inventory = u.inventory.filter(p => {
-            if (p.name.toLowerCase() === petName && count < 4) {
-                count++;
-                return false;
-            }
+            if (p.name.toLowerCase() === petName && count < 4) { count++; return false; }
             return true;
         });
 
@@ -135,5 +135,3 @@ client.on('messageCreate', async (msg) => {
         msg.reply(`🌈 **NEON SUCCESS!** You fused your ${petName}s into a **Neon ${petName}**!`);
     }
 });
-
-client.login(process.env.TOKEN);
