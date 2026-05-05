@@ -1,20 +1,12 @@
 {
-  "name": "business-tycoon-bot",
-  "version": "3.0.0",
-  "description": "🚀 Premium Business Tycoon Discord Bot",
+  "name": "adopt-me-ultra",
+  "version": "8.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
-    "discord.js": "^14.14.0",
-    "dotenv": "^16.3.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "discord.js": "^14.15.3",
+    "mongoose": "^8.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
   }
 }
